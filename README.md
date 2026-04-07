@@ -4,6 +4,10 @@ Python-based simple database management system made for TCSS 445.
 
 Run `pydb.py -h` for usage information
 
+I've disabled all exception raising for the assignment, so the program
+will just continue if there's an error. The code for raising exceptions
+is still there just commented out.
+
 Supports:
 ```sql
 CREATE DATABASE <name> [path="./"]
