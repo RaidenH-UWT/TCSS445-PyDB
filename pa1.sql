@@ -22,6 +22,14 @@ SELECT * FROM tbl_1;
 CREATE TABLE tbl_1 (a3 float, a4 char(20));
 SELECT * FROM tbl_1;
 
+DROP TABLE tbl_1;
+DROP DATABASE db_2;
+
+USE db_1;
+DROP TABLE tbl_1;
+DROP TABLE tbl_2;
+DROP DATABASE db_1;
+
 -- Expected output
 --
 -- Database db_1 created.
