@@ -2,7 +2,7 @@
 """Python-based database management system.
 
 Author: Raiden H
-Updated: 26-04-06
+Updated: 26-04-08
 
 Usage:  
     pydb -h
@@ -12,7 +12,7 @@ Usage:
 
 Options:
     -h          Prints this help message
-    [file]      Executes the statements of a .sql file
+    <FILE>      Executes the statements of a .sql file
     -s "<SQL>"  Executes the passed SQL statements. Requires quotes.
     -i          Runs in interactive mode, letting the user enter statements one at a time
     -q          Runs in quiet mode, not printing any output except errors.
@@ -40,9 +40,10 @@ current_database = ""
 
 def main():
     """Handle input and pass it off to helper functions."""
+    global PRINT_INFO
     PRINT_INFO = "-q" not in sys.argv
     raw = ""
-    if sys.argv[1] == "-h":
+    if len(sys.argv) == 1 or sys.argv[1] == "-h":
         print(__doc__)
         return
     elif sys.argv[1] == "-t":
@@ -54,7 +55,7 @@ def main():
         with open(sys.argv[1], "r") as file:
             raw = file.read()
     elif sys.argv[1] == "-i":
-        interactive()
+        _interactive()
     else:
         print("Bad arguments")
         print(__doc__)
@@ -69,9 +70,9 @@ def main():
     for cmd in cmds:
         execute(cmd)
 
-def interactive():
+def _interactive():
     print("""\
-    Now running in interactive mode, run a single statement at a time
+    Now running in interactive mode, enter a single statement at a time
     Interrupt or type 'exit' to exit
     Type '\\c' to clear the current statement\
     """)
@@ -131,6 +132,28 @@ def execute(cmd):
         # all the string after the WHERE, or None if no condition
         cond = cmd[cmd.upper().find("WHERE") + 6:] if cmd.upper().find("WHERE") > -1 else None
         select(cols, table, cond)
+    elif cmd[:11].upper() == "INSERT INTO":
+        table = cmd[12:cmd.find(" ", 12)]
+        columns = cmd[cmd.find(table) + len(table):cmd.upper().find("VALUES")].strip()
+        values = re.split(r'\),\s*\(', cmd[cmd.upper().find('VALUES') + 8:-1])
+        insert(table, [[re.sub(r'[\'"]', '', x).strip() for x in val.split(',')] for val in values], None if len(columns) == 0 else columns.replace(' ', '').split(','))
+    elif cmd[:6].upper() == "UPDATE":
+        table = cmd[7:cmd.find(" ", 7)]
+        records = cmd[cmd.upper().find("SET") + 4:cmd.upper().find("WHERE") - 1 if cmd.upper().find("WHERE") > -1 else None]
+        records = [x.strip() for x in records.split(',')]
+        keys = {}
+        for i in range(len(records)):
+            keys[[x[:x.find('=')].strip() for x in records][i]] = [x[x.find('=') + 1:].strip() for x in records][i]
+        cond = cmd[cmd.upper().find("WHERE") + 6:].strip() if cmd.upper().find("WHERE") > -1 else None
+        if not cond == None:
+            cond = {cond[:cond.find('=')].strip(): re.sub(r'[\'"]', '', cond[cond.find('=') + 1:]).strip()}
+        update(table, keys, cond)
+    elif cmd[:11].upper() == "DELETE FROM":
+        table = cmd[12:cmd.find(" ", 12)]
+        cond = cmd[cmd.upper().find("WHERE") + 6:].strip() if cmd.upper().find("WHERE") > -1 else None
+        if not cond == None:
+            cond = {cond[:cond.find('=')].strip(): re.sub(r'[\'"]', '', cond[cond.find('=') + 1:]).strip()}
+        delete(table, cond)
     else:
         # raise SyntaxError(f"ERROR: Command {cmd} could not be parsed")
         print(f"ERROR: Command {cmd} could not be parsed")
@@ -220,6 +243,7 @@ def create_table(name, columns):
                 print(f"ERROR: Column: {col} has illegal datatype")
         with open(path, "w") as table:
             table.write("|".join([f"{col[0]} {col[1]}" for col in columns]))
+        if PRINT_INFO:
             print(f"Created table {name}")
     
 def drop_table(name):
@@ -239,7 +263,8 @@ def drop_table(name):
     else:
         try:
             os.remove(path)
-            print(f"Dropped table {name}")
+            if PRINT_INFO:
+                print(f"Dropped table {name}")
         except FileNotFoundError:
             # raise FileNotFoundError(f"ERROR: Table {path} does not exist.")
             print(f"ERROR: Table {name} does not exist.")
@@ -264,14 +289,16 @@ def alter_table(name, cmd):
             with open(os.path.join(current_database, name), "r") as inFile:
                 lines = inFile.readlines()
             if cmd[:3].upper() == "ADD":
-                print(f"Adding column {cmd[4:]} to table {name}")
+                if PRINT_INFO:
+                    print(f"Adding column {cmd[4:]} to table {name}")
                 lines[0] += f"|{cmd[4:]}"
                 for i in range(len(lines) - 1):
                     lines[i + 1] = lines[i + 1] + '|""'
             elif cmd[:11].upper() == "DROP COLUMN":
                 column = cmd[12:]
-                
-                print(f"Dropping column {column} from table {name}")
+
+                if PRINT_INFO:
+                    print(f"Dropping column {column} from table {name}")
                 
                 if column in [col[:col.find(" ")] for col in lines[0].split("|")]:
                     index = [col[:col.find(" ")] for col in lines[0].split("|")].index(column)
@@ -348,7 +375,8 @@ def select(columns, table, condition = None):
         
         # Maybe add a nice lil note about the number of records retrieved here? tough if
         # i'm checking the condition in the drawing
-        print(f"Selecting {columns} from {table}")
+        if PRINT_INFO:
+            print(f"Selecting {columns if len(columns) > 1 else columns[0]} from {table}")
         # Print pretty boxes!
         for line in lines:
             # TODO: Check condition in here
@@ -363,6 +391,132 @@ def select(columns, table, condition = None):
             print(f"+{'-' * (widths[indexes[i]] + 2)}", end = "")
         print("+")
 
+def insert(table, values, columns = None):
+    """Insert records into a table.
+    
+    Arguments:
+    table -- Which table to insert into
+    values -- The records to insert. List of tuples
+    columns -- Which columns to insert into (default is None)
+    
+    Raises:
+    FileNotFoundError if the given table does not lead to a table.
+    RuntimeError if there is no database being used, or if a column is not present in the table.
+    SyntaxError if the lengths of values and columns do not match.
+    """
+    if current_database == "":
+        # raise RuntimeError("ERROR: No database in use")
+        print("ERROR: No database in use")
+    else:
+        path = os.path.join(current_database, table)
+        if not os.path.exists(path):
+            # raise FileNotFoundError(f"ERROR: Table {table} does not exist")
+            print(f"ERROR: Table {table} does not exist")
+            return
+        if (not columns == None) and (not len(values[0]) == len(columns)):
+            # raise SyntaxError(f"ERROR: Length of values and columns does not match")
+            print(f"ERROR: Length of values and columns does not match")
+            return
+        with open(path, "r") as reader:
+            tableColumns = reader.readline().split("|")
+        tableColumns = [x[:x.find(" ")] for x in tableColumns]
+        if not columns == None:
+            for col in columns:
+                if not col in tableColumns:
+                    # raise RuntimeError(f"ERROR: Column {col} not found in {table}")
+                    print(f"ERROR: Column {col} not found in {table}")
+                    return
+        print(f"Inserting {len(values)} records into {table}")
+        out = []
+        for value in values:
+            out.append([value[tableColumns.index(x)] if columns == None or x in columns else "" for x in tableColumns])
+        with open(path, 'a') as writer:
+            writer.writelines([f'\n"{'"|"'.join(map(str, x))}"' for x in out])
+            
+def update(table, values, condition = None):
+    """Update records in a table.
+    
+    Arguments:
+    table -- Which table to update
+    values -- The columns to update. Dictionary
+    condition -- Conditions to select data on (default is None)
+    
+    Raises:
+    FileNotFoundError if the given table does not lead to a table.
+    RuntimeError if there is no database being used.
+    """
+    if current_database == "":
+        # raise RuntimeError("ERROR: No database in use")
+        print("ERROR: No database in use")
+    else:
+        path = os.path.join(current_database, table)
+        if not os.path.exists(path):
+            # raise FileNotFoundError(f"ERROR: Table {table} does not exist")
+            print(f"ERROR: Table {table} does not exist")
+            return
+        with open(path, "r") as reader:
+            lines = reader.read()
+        lines = lines.split("\n")
+        cols = lines.pop(0).split("|")
+        head = [x[:x.find(" ")] for x in cols]
+        recordCount = 0
+        for line in lines:
+            record = line[1:-1].split('"|"')
+            if condition == None:
+                for value in values:
+                    record[head.index(value)] = values[value]
+                recordCount += 1
+            else:
+                for key in condition:
+                    if record[head.index(key)] == str(condition[key]):
+                        for value in values:
+                            record[head.index(value)] = values[value]
+                        recordCount += 1
+                        break
+            lines[lines.index(line)] = f'"{'"|"'.join(record)}"'
+        print(f"Updating {recordCount} records from {table}")
+        with open(path, "w") as writer:
+            writer.writelines(['|'.join(cols), *['\n' + x for x in lines]])
+        
+def delete(table, condition = None):
+    """Delete records from a table.
+    
+    Arguments:
+    table -- Which table to delete from
+    condition -- Conditions to select data on. Dictionary format for column: value (default is None)
+    
+    Raises:
+    FileNotFoundError if the given table does not lead to a table.
+    RuntimeError if there is no database being used.
+    """
+    if current_database == "":
+        # raise RuntimeError("ERROR: No database in use")
+        print("ERROR: No database in use")
+    else:
+        path = os.path.join(current_database, table)
+        if not os.path.exists(path):
+            # raise FileNotFoundError(f"ERROR: Table {table} does not exist")
+            print(f"ERROR: Table {table} does not exist")
+            return
+        with open(path, "r") as reader:
+            lines = reader.read()
+        lines = lines.split("\n")
+        cols = lines.pop(0).split("|")
+        head = [x[:x.find(" ")] for x in cols]
+        recordCount = len(lines)
+        for line in lines:
+            record = line[1:-1].split('"|"')
+            if condition == None:
+                lines.remove(line)
+            else:
+                for key in condition:
+                    if record[head.index(key)] == str(condition[key]):
+                        lines.remove(line)
+                        break
+        print(f"Deleting {recordCount - len(lines)} records from {table}")
+        with open(path, "w") as writer:
+            writer.writelines(['|'.join(cols), *['\n' + x for x in lines]])
+    
 def validate_datatype(datatype):
     """Validate a given SQL datatype.
     
@@ -390,9 +544,13 @@ def validate_datatype(datatype):
     # TODO: Datatype validation implementation
     return True
 
+def print_table(rows):
+    """Print a table (list of lists) in a pretty format"""
+    pass
+
 def test():
     """Testing"""
-    execute("USE DATABASE db_0")
+    return
 
 if __name__ == "__main__":
     main()
