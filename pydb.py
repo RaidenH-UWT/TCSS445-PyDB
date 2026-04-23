@@ -29,6 +29,9 @@ SQL Support:
                        DROP COLUMN <column>
 
     SELECT <columns> FROM <table>
+    INSERT INTO <table> [columns] VALUES <values>
+    UPDATE <table> SET <columns=values> [WHERE <condition>]
+    DELETE FROM <table> [WHERE <condition>]
 """
 
 import os
@@ -136,20 +139,24 @@ def execute(cmd):
         table = cmd[12:cmd.find(" ", 12)]
         columns = cmd[cmd.find(table) + len(table):cmd.upper().find("VALUES")].strip()
         values = re.split(r'\),\s*\(', cmd[cmd.upper().find('VALUES') + 8:-1])
+        # transform values into list of lists
         insert(table, [[re.sub(r'[\'"]', '', x).strip() for x in val.split(',')] for val in values], None if len(columns) == 0 else columns.replace(' ', '').split(','))
     elif cmd[:6].upper() == "UPDATE":
         table = cmd[7:cmd.find(" ", 7)]
         records = cmd[cmd.upper().find("SET") + 4:cmd.upper().find("WHERE") - 1 if cmd.upper().find("WHERE") > -1 else None]
         records = [x.strip() for x in records.split(',')]
+        # transform records into dict
         keys = {}
         for i in range(len(records)):
             keys[[x[:x.find('=')].strip() for x in records][i]] = [x[x.find('=') + 1:].strip() for x in records][i]
         cond = cmd[cmd.upper().find("WHERE") + 6:].strip() if cmd.upper().find("WHERE") > -1 else None
+        # transform cond into a dict
         if not cond == None:
             cond = {cond[:cond.find('=')].strip(): re.sub(r'[\'"]', '', cond[cond.find('=') + 1:]).strip()}
         update(table, keys, cond)
     elif cmd[:11].upper() == "DELETE FROM":
         table = cmd[12:cmd.find(" ", 12)]
+        # transform cond into a dict
         cond = cmd[cmd.upper().find("WHERE") + 6:].strip() if cmd.upper().find("WHERE") > -1 else None
         if not cond == None:
             cond = {cond[:cond.find('=')].strip(): re.sub(r'[\'"]', '', cond[cond.find('=') + 1:]).strip()}

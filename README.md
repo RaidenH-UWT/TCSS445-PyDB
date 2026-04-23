@@ -21,6 +21,10 @@ ALTER TABLE <name> <operation> ...
                    DROP COLUMN <column>
 
 SELECT <columns> FROM <table>
+
+INSERT INTO <table> [columns] VALUES <values>
+UPDATE <table> SET <columns=values> [WHERE <condition>]
+DELETE FROM <table> [WHERE <condition>]
 ```
 
 ## Submission
