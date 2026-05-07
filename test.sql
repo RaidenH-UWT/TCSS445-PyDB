@@ -15,6 +15,7 @@ SELECT * FROM tab WHERE num=1;
 
 -- Alter table
 ALTER TABLE tab ADD num2 float;
+SELECT * FROM tab;
 
 -- Cleanup
 DROP TABLE tab;

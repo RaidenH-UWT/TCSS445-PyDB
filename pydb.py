@@ -298,9 +298,9 @@ def alter_table(name, cmd):
             if cmd[:3].upper() == "ADD":
                 if PRINT_INFO:
                     print(f"Adding column {cmd[4:]} to table {name}")
-                lines[0] += f"|{cmd[4:]}"
+                lines[0] = lines[0].replace("\n", "") + f"|{cmd[4:]}\n"
                 for i in range(len(lines) - 1):
-                    lines[i + 1] = lines[i + 1] + '|""'
+                    lines[i + 1] = lines[i + 1].replace("\n", "") + '|""\n'
             elif cmd[:11].upper() == "DROP COLUMN":
                 column = cmd[12:]
 
@@ -368,35 +368,14 @@ def select(columns, table, condition = None):
             lines[i + 1][0] = lines[i + 1][0][1:]
             lines[i + 1][-1] = lines[i + 1][-1][:-1]
         
-        indexes = []
-        widths = {}
+        header = lines[0]
+        selected = [[line[x] for x in range(len(line)) if header[x][:header[x].find(" ")] in columns or columns[0] == "*"] for line in lines[1:]]
+        joined = [header] + selected
         
-        # Select columns
-        for header in lines[0]:
-            # If the header name we're looking at is in columns, grab it
-            if header[:header.find(" ")] in columns or columns[0] == "*":
-                # Append the index of the column
-                indexes.append(lines[0].index(header))
-                # Find the widest element in the column and save its width
-                widths[indexes[-1]] = max([len(x[indexes[-1]]) for x in lines])
-        
-        # Maybe add a nice lil note about the number of records retrieved here? tough if
-        # i'm checking the condition in the drawing
         if PRINT_INFO:
-            print(f"Selecting {columns if len(columns) > 1 else columns[0]} from {table}")
+            print(f"Selecting {len(selected)} records from table {table}")
         # Print pretty boxes!
-        for line in lines:
-            # TODO: Check condition in here
-            for i in range(len(indexes)):
-                print(f"+{'-' * (widths[indexes[i]] + 2)}", end = "")
-            print("+")
-            for i in range(len(indexes)):
-                print(f"|{line[indexes[i]].center(widths[i] + 2)}", end = "")
-            print("|")
-        # Last line
-        for i in range(len(indexes)):
-            print(f"+{'-' * (widths[indexes[i]] + 2)}", end = "")
-        print("+")
+        print_table(joined)
 
 def insert(table, values, columns = None):
     """Insert records into a table.
@@ -433,7 +412,8 @@ def insert(table, values, columns = None):
                     # raise RuntimeError(f"ERROR: Column {col} not found in {table}")
                     print(f"ERROR: Column {col} not found in {table}")
                     return
-        print(f"Inserting {len(values)} records into {table}")
+        if PRINT_INFO:
+            print(f"Inserting {len(values)} records into {table}")
         out = []
         for value in values:
             out.append([value[tableColumns.index(x)] if columns == None or x in columns else "" for x in tableColumns])
@@ -481,7 +461,8 @@ def update(table, values, condition = None):
                         recordCount += 1
                         break
             lines[lines.index(line)] = f'"{'"|"'.join(record)}"'
-        print(f"Updating {recordCount} records from {table}")
+        if PRINT_INFO:
+            print(f"Updating {recordCount} records from {table}")
         with open(path, "w") as writer:
             writer.writelines(['|'.join(cols), *['\n' + x for x in lines]])
         
@@ -520,7 +501,8 @@ def delete(table, condition = None):
                     if record[head.index(key)] == str(condition[key]):
                         lines.remove(line)
                         break
-        print(f"Deleting {recordCount - len(lines)} records from {table}")
+        if PRINT_INFO:
+            print(f"Deleting {recordCount - len(lines)} records from {table}")
         with open(path, "w") as writer:
             writer.writelines(['|'.join(cols), *['\n' + x for x in lines]])
     
@@ -553,7 +535,18 @@ def validate_datatype(datatype):
 
 def print_table(rows):
     """Print a table (list of lists) in a pretty format"""
-    pass
+    widths = [max([len(str(row[i])) for row in rows]) for i in range(len(rows[0]))]
+    for row in rows:
+        for i in range(len(rows[0])):
+            print(f"+{'-' * (widths[i] + 2)}", end = "")
+        print("+")
+        for i in range(len(rows[0])):
+            print(f"|{row[i].center(widths[i] + 2)}", end = "")
+        print("|")
+    # Last line
+    for i in range(len(rows[i])):
+        print(f"+{'-' * (widths[i] + 2)}", end = "")
+    print("+")
 
 def test():
     """Testing"""
