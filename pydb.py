@@ -440,14 +440,17 @@ def update(table, values, condition = None):
             # raise FileNotFoundError(f"ERROR: Table {table} does not exist")
             print(f"ERROR: Table {table} does not exist")
             return
-        with open(path, "r") as reader:
-            lines = reader.read()
-        lines = lines.split("\n")
-        cols = lines.pop(0).split("|")
+        global PRINT_INFO
+        temp = PRINT_INFO
+        PRINT_INFO = False
+        selection = select(["*"], table, condition)
+        PRINT_INFO = temp
+        
+        cols = selection.pop(0)
         head = [x[:x.find(" ")] for x in cols]
         recordCount = 0
-        for line in lines:
-            record = line[1:-1].split('"|"')
+
+        for record in selection:
             if condition == None:
                 for value in values:
                     record[head.index(value)] = values[value]
@@ -459,11 +462,10 @@ def update(table, values, condition = None):
                             record[head.index(value)] = values[value]
                         recordCount += 1
                         break
-            lines[lines.index(line)] = f'"{'"|"'.join(record)}"'
         if PRINT_INFO:
             print(f"Updating {recordCount} records from {table}")
         with open(path, "w") as writer:
-            writer.writelines(['|'.join(cols), *['\n' + x for x in lines]])
+            writer.writelines(['|'.join(cols), *['\n"' + '"|"'.join(x) + '"' for x in selection]])
         
 def delete(table, condition = None):
     """Delete records from a table.
@@ -490,13 +492,14 @@ def delete(table, condition = None):
         PRINT_INFO = False
         selection = select(["*"], table, condition)
         PRINT_INFO = temp
+        
         cols = selection.pop(0)
         head = [x[:x.find(" ")] for x in cols]
         recordCount = len(selection)
         selection = [row for row in selection if not condition == None and not len([key for key in condition if row[head.index(key)] == str(condition[key])]) > 0]
 
         if PRINT_INFO:
-            print(f"Deleting {recordCount - len(selection)} records from {table}")
+            print(f"Deleting {recordCount - len(selection)} records from table {table}")
         with open(path, "w") as writer:
             writer.writelines(['|'.join(cols), *['\n"' + '"|"'.join(x) + '"' for x in selection]])
     

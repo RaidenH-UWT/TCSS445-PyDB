@@ -17,6 +17,10 @@ SELECT * FROM tab WHERE num=1;
 ALTER TABLE tab ADD num2 float;
 SELECT * FROM tab;
 
+-- Update data
+UPDATE tab SET num2=3.14 WHERE num=3;
+SELECT * FROM tab;
+
 -- Delete data
 DELETE FROM tab WHERE num=1;
 SELECT * FROM tab;
