@@ -17,6 +17,10 @@ SELECT * FROM tab WHERE num=1;
 ALTER TABLE tab ADD num2 float;
 SELECT * FROM tab;
 
+-- Delete data
+DELETE FROM tab WHERE num=1;
+SELECT * FROM tab;
+
 -- Cleanup
 DROP TABLE tab;
 DROP DATABASE db_1;

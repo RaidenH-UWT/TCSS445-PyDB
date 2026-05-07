@@ -134,7 +134,7 @@ def execute(cmd):
         table = cmd[cmd.upper().find("FROM") + 5:cmd.upper().find("WHERE") - 1 if cmd.upper().find("WHERE") > -1 else None]
         # all the string after the WHERE, or None if no condition
         cond = cmd[cmd.upper().find("WHERE") + 6:] if cmd.upper().find("WHERE") > -1 else None
-        select(cols, table, cond)
+        print_table(select(cols, table, cond))
     elif cmd[:11].upper() == "INSERT INTO":
         table = cmd[12:cmd.find(" ", 12)]
         columns = cmd[cmd.find(table) + len(table):cmd.upper().find("VALUES")].strip()
@@ -374,8 +374,7 @@ def select(columns, table, condition = None):
         
         if PRINT_INFO:
             print(f"Selecting {len(selected)} records from table {table}")
-        # Print pretty boxes!
-        print_table(joined)
+        return joined
 
 def insert(table, values, columns = None):
     """Insert records into a table.
@@ -486,25 +485,20 @@ def delete(table, condition = None):
             # raise FileNotFoundError(f"ERROR: Table {table} does not exist")
             print(f"ERROR: Table {table} does not exist")
             return
-        with open(path, "r") as reader:
-            lines = reader.read()
-        lines = lines.split("\n")
-        cols = lines.pop(0).split("|")
+        global PRINT_INFO
+        temp = PRINT_INFO
+        PRINT_INFO = False
+        selection = select(["*"], table, condition)
+        PRINT_INFO = temp
+        cols = selection.pop(0)
         head = [x[:x.find(" ")] for x in cols]
-        recordCount = len(lines)
-        for line in lines:
-            record = line[1:-1].split('"|"')
-            if condition == None:
-                lines.remove(line)
-            else:
-                for key in condition:
-                    if record[head.index(key)] == str(condition[key]):
-                        lines.remove(line)
-                        break
+        recordCount = len(selection)
+        selection = [row for row in selection if not condition == None and not len([key for key in condition if row[head.index(key)] == str(condition[key])]) > 0]
+
         if PRINT_INFO:
-            print(f"Deleting {recordCount - len(lines)} records from {table}")
+            print(f"Deleting {recordCount - len(selection)} records from {table}")
         with open(path, "w") as writer:
-            writer.writelines(['|'.join(cols), *['\n' + x for x in lines]])
+            writer.writelines(['|'.join(cols), *['\n"' + '"|"'.join(x) + '"' for x in selection]])
     
 def validate_datatype(datatype):
     """Validate a given SQL datatype.
