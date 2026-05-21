@@ -1,1 +1,4 @@
 output.txt
+__pycache__/
+db_*/
+*_db/

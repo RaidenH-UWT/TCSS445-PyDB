@@ -10,6 +10,13 @@ is still there just commented out.
 
 Supports:
 ```sql
+-- Single line comments
+/*
+Multiline
+    comments
+*/
+PRINT <text> /* Inline comments */
+
 CREATE DATABASE <name> [path="./"]
 DROP DATABASE <name> [path="./"]
 USE DATABASE <name> [path="./"]
@@ -20,7 +27,10 @@ ALTER TABLE <name> <operation> ...
                    ADD <columns>
                    DROP COLUMN <column>
 
-SELECT <columns> FROM <table>
+SELECT <columns> FROM <table> WHERE <condition>
+                      <tables> WHERE <condition>
+                      <table> INNER JOIN <table> ON <condition>
+                      <table> LEFT OUTER JOIN <table> ON <condition>
 
 INSERT INTO <table> [columns] VALUES <values>
 UPDATE <table> SET <columns=values> [WHERE <condition>]
@@ -29,7 +39,7 @@ DELETE FROM <table> [WHERE <condition>]
 
 ## Submission
 
-Zip up (into `raidenh_pa1.zip`):
+Zip up (into `raidenh_pa3.zip`):
 
 - pydb.py
-- output.txt (Output of pydb.py on pa1.sql piped to output.txt)
+- output.txt (Output of pydb.py on pa3.sql piped to output.txt)
