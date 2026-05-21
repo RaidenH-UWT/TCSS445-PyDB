@@ -67,7 +67,7 @@ def main():
     # Now we've got long input, time to tokenize it
     raw = re.sub(r" {2,}", "", raw) # cut multiple spaces
     raw = re.sub(r"--.*", "", raw) # remove full-line comments
-    raw = re.sub(r"/\*.*?\*/", "", raw) # remove inline comments
+    raw = re.sub(r"/\*[\S\s]*?\*/", "", raw) # remove inline comments
     raw = raw.replace("\n", "") # remove newlines
     raw = re.sub(r"(\S),(\S)", r"\1, \2", raw) # put a space back after commas
 
@@ -169,6 +169,8 @@ def execute(cmd):
         if not cond == None:
             cond = {cond[:cond.find('=')].strip(): re.sub(r'[\'"]', '', cond[cond.find('=') + 1:]).strip()}
         delete(table, cond)
+    elif cmd[:5].upper() == "PRINT":
+        print(cmd[6:])
     else:
         # raise SyntaxError(f"ERROR: Command {cmd} could not be parsed")
         print(f"ERROR: Command {cmd} could not be parsed")
@@ -357,15 +359,22 @@ def select(columns, table, condition = None):
     else:
         global PRINT_INFO
         if ", " in table:
-            # TODO: replace aliases with table names (in execute maybe?)
             # TODO: allow joins checking for equality on mismatched field names
             # implicit inner join
             temp = PRINT_INFO
             PRINT_INFO = False
             selections = {}
             tables = table.split(", ")
-            for tbl in tables:
-                selections[tbl] = select(columns, tbl)
+            for i in range(len(tables)):
+                if ' ' in tables[i]:
+                    alias = tables[i].split(' ')
+                    temp = {}
+                    for cond in condition:
+                        temp[cond.replace(alias[1] + '.', alias[0] + '.')] = condition[cond].replace(alias[1] + '.', alias[0] + '.')
+                    condition = temp
+                    
+                    tables[i] = alias[0]
+                selections[tables[i]] = select(columns, tables[i])
             PRINT_INFO = temp
 
             heads = {tbl: [head[:head.find(' ')] for head in selections[tbl][0]] for tbl in tables}
@@ -373,10 +382,11 @@ def select(columns, table, condition = None):
             joined = [selections[tables[0]][0]]
             joined[0] += [x for x in selections[tables[1]][0] if x not in joined[0]]
 
-            matching = [key[key.find('.') + 1:] for key in condition]
+            matching = [[key[key.find('.') + 1:], condition[key][condition[key].find('.') + 1:]] for key in condition]
+            print(matching)
             data = []
             for record in selections[tables[0]][1:]:
-                match = next((x for x in selections[tables[1]][1:] if x[heads[tables[1]].index(matching[0])] == record[heads[tables[0]].index(matching[0])]), None)
+                match = next((x for x in selections[tables[1]][1:] if x[heads[tables[1]].index(matching[0][1])] == record[heads[tables[0]].index(matching[0][0])]), None)
                 if match:
                     data += [record + [val for val in match if heads[tables[1]][match.index(val)] not in heads[tables[0]]]]
 
@@ -405,17 +415,17 @@ def select(columns, table, condition = None):
             joined = [selections[tables[0]][0]]
             joined[0] += [x for x in selections[tables[1]][0] if x not in joined[0]]
 
-            matching = [key[key.find('.') + 1:] for key in condition]
+            matching = [[key[key.find('.') + 1:], condition[key][condition[key].find('.') + 1:]] for key in condition]
             data = []
             for record in selections[tables[0]][1:]:
                 if outerJoin:
-                    match = next((x for x in selections[tables[1]][1:] if x[heads[tables[1]].index(matching[0])] == record[heads[tables[0]].index(matching[0])]), None)
+                    match = next((x for x in selections[tables[1]][1:] if x[heads[tables[1]].index(matching[0][1])] == record[heads[tables[0]].index(matching[0][0])]), None)
                     if match:
                         data += [record + [val if val is not None else '' for val in match if heads[tables[1]][match.index(val)] not in heads[tables[0]]]]
                     else:
                         data += [record + ['' for x in heads[tables[1]] if x not in heads[tables[0]]]]
                 else:
-                    match = next((x for x in selections[tables[1]][1:] if x[heads[tables[1]].index(matching[0])] == record[heads[tables[0]].index(matching[0])]), None)
+                    match = next((x for x in selections[tables[1]][1:] if x[heads[tables[1]].index(matching[0][1])] == record[heads[tables[0]].index(matching[0][0])]), None)
                     if match:
                         data += [record + [val for val in match if heads[tables[1]][match.index(val)] not in heads[tables[0]]]]
 
@@ -617,7 +627,7 @@ def validate_datatype(datatype):
 def print_table(rows):
     """Print a table (list of lists) in a pretty format"""
     if rows == None: return
-
+    rows = [[row[i] if i < len(row) else '' for i in range(len(rows[0]))] for row in rows]
     widths = [max([len(str(row[i])) for row in rows]) for i in range(len(rows[0]))]
     for row in rows:
         for i in range(len(rows[0])):
