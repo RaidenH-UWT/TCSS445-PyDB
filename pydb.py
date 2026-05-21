@@ -526,9 +526,10 @@ def update(table, values, condition = None):
         global PRINT_INFO
         temp = PRINT_INFO
         PRINT_INFO = False
-        selection = select(["*"], table)
-        PRINT_INFO = temp
 
+        selection = select(["*"], table, condition)
+        PRINT_INFO = temp
+        
         cols = selection.pop(0)
         head = [x[:x.find(" ")] for x in cols]
         recordCount = 0
@@ -573,9 +574,9 @@ def delete(table, condition = None):
         global PRINT_INFO
         temp = PRINT_INFO
         PRINT_INFO = False
-        selection = select(["*"], table)
+        selection = select(["*"], table, condition)
         PRINT_INFO = temp
-
+        
         cols = selection.pop(0)
         head = [x[:x.find(" ")] for x in cols]
         recordCount = len(selection)
@@ -616,6 +617,7 @@ def validate_datatype(datatype):
 def print_table(rows):
     """Print a table (list of lists) in a pretty format"""
     if rows == None: return
+
     widths = [max([len(str(row[i])) for row in rows]) for i in range(len(rows[0]))]
     for row in rows:
         for i in range(len(rows[0])):
