@@ -2,7 +2,7 @@
 """Python-based database management system.
 
 Author: Raiden H
-Updated: 26-04-08
+Updated: 26-05-21
 
 Usage:
     pydb -h
@@ -18,6 +18,13 @@ Options:
     -q          Runs in quiet mode, not printing any output except errors.
 
 SQL Support:
+    -- Single line comments
+    /*
+    Multiline
+        comments
+    */
+    PRINT <text> /* Inline comments */
+
     CREATE DATABASE <name> [path="./"]
     DROP DATABASE <name> [path="./"]
     USE DATABASE <name> [path="./"]
@@ -25,10 +32,14 @@ SQL Support:
     CREATE TABLE <name> <columns>
     DROP TABLE <name>
     ALTER TABLE <name> <operation> ...
-                       ADD <columns>
-                       DROP COLUMN <column>
+                    ADD <columns>
+                    DROP COLUMN <column>
 
-    SELECT <columns> FROM <table> [WHERE <condition>]
+    SELECT <columns> FROM <table> WHERE <condition>
+                        <tables> WHERE <condition>
+                        <table> INNER JOIN <table> ON <condition>
+                        <table> LEFT OUTER JOIN <table> ON <condition>
+
     INSERT INTO <table> [columns] VALUES <values>
     UPDATE <table> SET <columns=values> [WHERE <condition>]
     DELETE FROM <table> [WHERE <condition>]
@@ -654,7 +665,6 @@ def print_table(rows):
 
 def test():
     """Testing"""
-    print(join_records({'name': 'abcd', 'age': 19}, {'name': 'fghj', 'date': 2000}))
     return
 
 if __name__ == "__main__":
