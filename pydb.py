@@ -4,11 +4,11 @@
 Author: Raiden H
 Updated: 26-04-08
 
-Usage:  
+Usage:
     pydb -h
     pydb <FILE> [-q]
     pydb -s "<SQL>" [-q]
-    pydb -i
+    pydb -i [-q]
 
 Options:
     -h          Prints this help message
@@ -28,7 +28,7 @@ SQL Support:
                        ADD <columns>
                        DROP COLUMN <column>
 
-    SELECT <columns> FROM <table>
+    SELECT <columns> FROM <table> [WHERE <condition>]
     INSERT INTO <table> [columns] VALUES <values>
     UPDATE <table> SET <columns=values> [WHERE <condition>]
     DELETE FROM <table> [WHERE <condition>]
@@ -65,10 +65,12 @@ def main():
         return
 
     # Now we've got long input, time to tokenize it
-    raw = re.sub(r" +", " ", raw) # cut multiple spaces down to 1
-    raw = re.sub(r"--.*", "", raw) # remove comments
+    raw = re.sub(r" {2,}", "", raw) # cut multiple spaces
+    raw = re.sub(r"--.*", "", raw) # remove full-line comments
+    raw = re.sub(r"/\*.*?\*/", "", raw) # remove inline comments
     raw = raw.replace("\n", "") # remove newlines
-    
+    raw = re.sub(r"(\S),(\S)", r"\1, \2", raw) # put a space back after commas
+
     cmds = raw.split(";")[:-1] # split into individual statements
     for cmd in cmds:
         execute(cmd)
@@ -95,10 +97,10 @@ def _interactive():
 
 def execute(cmd):
     """Parse and execute SQL statement.
-    
+
     Arguments:
     cmd -- Single SQL statement to parse
-    
+
     Raises:
     SyntaxError if the statement cannot be parsed.
     """
@@ -133,11 +135,17 @@ def execute(cmd):
         # all that to say: between the FROM and WHERE, or if there's no WHERE then just the end
         table = cmd[cmd.upper().find("FROM") + 5:cmd.upper().find("WHERE") - 1 if cmd.upper().find("WHERE") > -1 else None]
         # all the string after the WHERE, or None if no condition
-        cond = cmd[cmd.upper().find("WHERE") + 6:] if cmd.upper().find("WHERE") > -1 else None
-        select(cols, table, cond)
+        if 'ON' in cmd.upper():
+            cond = cmd[cmd.upper().find("ON") + 3:].strip()
+        else:
+            cond = cmd[cmd.upper().find("WHERE") + 6:].strip() if "WHERE" in cmd.upper() else None
+        # transform cond into a dict
+        if not cond == None:
+            cond = {cond[:cond.find('=')].strip(): re.sub(r'[\'"]', '', cond[cond.find('=') + 1:]).strip()}
+        print_table(select(cols, table, cond))
     elif cmd[:11].upper() == "INSERT INTO":
         table = cmd[12:cmd.find(" ", 12)]
-        columns = cmd[cmd.find(table) + len(table):cmd.upper().find("VALUES")].strip()
+        columns = cmd[cmd.find(table) + len(table) + 2:cmd.upper().find("VALUES") - 2].strip()
         values = re.split(r'\),\s*\(', cmd[cmd.upper().find('VALUES') + 8:-1])
         # transform values into list of lists
         insert(table, [[re.sub(r'[\'"]', '', x).strip() for x in val.split(',')] for val in values], None if len(columns) == 0 else columns.replace(' ', '').split(','))
@@ -167,11 +175,11 @@ def execute(cmd):
 
 def create_database(name, path = "."):
     """Create databases.
-    
+
     Arguments:
     name -- Name of the database to create
     path -- Filepath to a directory to put the database (default is the current directory)
-    
+
     Raises:
     FileExistsError if the given name and path lead to an already existing database.
     """
@@ -186,11 +194,11 @@ def create_database(name, path = "."):
 
 def drop_database(name, path = "."):
     """Delete databases.
-    
+
     Arguments:
     name -- Name of the database to delete
     path -- Filepath to a directory where the database is (default is the current directory)
-    
+
     Raises:
     FileNotFoundError if the given name and path do not lead to a database.
     """
@@ -202,14 +210,14 @@ def drop_database(name, path = "."):
     except FileNotFoundError:
         # raise FileNotFoundError(f"ERROR: Directory {full_path} does not exist.")
         print(f"ERROR: Directory {full_path} does not exist.")
-    
+
 def use_database(name, path = "."):
     """Select databases.
-    
+
     Arguments:
     name -- Name of the database to select
     path -- Filepath to a directory where the database is (default is the current directory)
-    
+
     Raises:
     FileNotFoundError if the given name and path do not lead to a database.
     """
@@ -223,14 +231,14 @@ def use_database(name, path = "."):
         current_database = full_path
         if PRINT_INFO:
             print(f"Using database {os.path.join(path, name)}")
-    
+
 def create_table(name, columns):
     """Create tables.
-    
+
     Arguments:
     name -- String name of the table to create
     columns -- List of tuple columns of the table like [(name, type), ...]
-    
+
     Raises:
     FileExistsError if the given name and path lead to an already existing table.
     RuntimeError if there is no database being used.
@@ -252,13 +260,13 @@ def create_table(name, columns):
             table.write("|".join([f"{col[0]} {col[1]}" for col in columns]))
         if PRINT_INFO:
             print(f"Created table {name}")
-    
+
 def drop_table(name):
     """Delete tables.
-    
+
     Arguments:
     name -- Name of the table to delete.
-    
+
     Raises:
     FileNotFoundError if the given does not lead to a table.
     RuntimeError if there is no database being used.
@@ -278,11 +286,11 @@ def drop_table(name):
 
 def alter_table(name, cmd):
     """Alter table metadata.
-    
+
     Arguments:
     name -- String name of the table to modify.
     cmd -- String alteration to perform.
-    
+
     Raises:
     FileNotFoundError if the given name does not lead to a table.
     RuntimeError if there is no database being used.
@@ -298,15 +306,15 @@ def alter_table(name, cmd):
             if cmd[:3].upper() == "ADD":
                 if PRINT_INFO:
                     print(f"Adding column {cmd[4:]} to table {name}")
-                lines[0] += f"|{cmd[4:]}"
+                lines[0] = lines[0].replace("\n", "") + f"|{cmd[4:]}\n"
                 for i in range(len(lines) - 1):
-                    lines[i + 1] = lines[i + 1] + '|""'
+                    lines[i + 1] = lines[i + 1].replace("\n", "") + '|""\n'
             elif cmd[:11].upper() == "DROP COLUMN":
                 column = cmd[12:]
 
                 if PRINT_INFO:
                     print(f"Dropping column {column} from table {name}")
-                
+
                 if column in [col[:col.find(" ")] for col in lines[0].split("|")]:
                     index = [col[:col.find(" ")] for col in lines[0].split("|")].index(column)
                     heads = lines[0].split("|")
@@ -329,83 +337,136 @@ def alter_table(name, cmd):
 
 def select(columns, table, condition = None):
     """Select data from a table.
-    
+
     Arguments:
     columns -- Which columns to select. Either list of string column names, or "*" for all columns.
     table -- Which table to select from.
     condition -- Conditions to select data on (default is None)
-    
+
     Raises:
     FileNotFoundError if the given table does not lead to a table.
     RuntimeError if there is no database being used.
+
+    Returns:
+    List of lists, with the first entry represeting table columns and subsequent entries
+    representing individual records.
     """
     if current_database == "":
         # raise RuntimeError("ERROR: No database in use")
         print("ERROR: No database in use")
     else:
-        path = os.path.join(current_database, table)
-        if not os.path.exists(path):
-            # raise FileNotFoundError(f"ERROR: Table {table} does not exist")
-            print(f"ERROR: Table {table} does not exist")
-            return
-        data = ""
-        with open(path, "r") as reader:
-            data = reader.read()
-        # split up the data by its separators
-        lines = data.split("\n")
-        lines[0] = lines[0].split("|")
-        for i in range(len(lines) - 1):
-            # Little check to handle blank lines in tables
-            # - shouldn't happen in program-generated tables
-            # but it messed me up in testing so it gets some validation
-            if lines[i + 1] == "":
-                lines.pop(i + 1)
-                continue
-            
-            # Split at quoted pipes
-            lines[i + 1] = re.split(r'"\|"', lines[i + 1])
-            # trim quotes the regex missed
-            lines[i + 1][0] = lines[i + 1][0][1:]
-            lines[i + 1][-1] = lines[i + 1][-1][:-1]
-        
-        indexes = []
-        widths = {}
-        
-        # Select columns
-        for header in lines[0]:
-            # If the header name we're looking at is in columns, grab it
-            if header[:header.find(" ")] in columns or columns[0] == "*":
-                # Append the index of the column
-                indexes.append(lines[0].index(header))
-                # Find the widest element in the column and save its width
-                widths[indexes[-1]] = max([len(x[indexes[-1]]) for x in lines])
-        
-        # Maybe add a nice lil note about the number of records retrieved here? tough if
-        # i'm checking the condition in the drawing
-        if PRINT_INFO:
-            print(f"Selecting {columns if len(columns) > 1 else columns[0]} from {table}")
-        # Print pretty boxes!
-        for line in lines:
-            # TODO: Check condition in here
-            for i in range(len(indexes)):
-                print(f"+{'-' * (widths[indexes[i]] + 2)}", end = "")
-            print("+")
-            for i in range(len(indexes)):
-                print(f"|{line[indexes[i]].center(widths[i] + 2)}", end = "")
-            print("|")
-        # Last line
-        for i in range(len(indexes)):
-            print(f"+{'-' * (widths[indexes[i]] + 2)}", end = "")
-        print("+")
+        global PRINT_INFO
+        if ", " in table:
+            # TODO: replace aliases with table names (in execute maybe?)
+            # TODO: allow joins checking for equality on mismatched field names
+            # implicit inner join
+            temp = PRINT_INFO
+            PRINT_INFO = False
+            selections = {}
+            tables = table.split(", ")
+            for tbl in tables:
+                selections[tbl] = select(columns, tbl)
+            PRINT_INFO = temp
+
+            heads = {tbl: [head[:head.find(' ')] for head in selections[tbl][0]] for tbl in tables}
+
+            joined = [selections[tables[0]][0]]
+            joined[0] += [x for x in selections[tables[1]][0] if x not in joined[0]]
+
+            matching = [key[key.find('.') + 1:] for key in condition]
+            data = []
+            for record in selections[tables[0]][1:]:
+                match = next((x for x in selections[tables[1]][1:] if x[heads[tables[1]].index(matching[0])] == record[heads[tables[0]].index(matching[0])]), None)
+                if match:
+                    data += [record + [val for val in match if heads[tables[1]][match.index(val)] not in heads[tables[0]]]]
+
+            joined += data
+            if PRINT_INFO:
+                print(f"Selecting {len(joined) - 1} records from tables {', '.join(tables)}")
+            return joined
+        elif "JOIN" in table.upper():
+            # explicit join of some sort
+            outerJoin = "LEFT OUTER JOIN" in table.upper()
+            tables = [table[:table.find(' ')]]
+            if outerJoin:
+                tables += [table[table.find('LEFT OUTER JOIN') + 16:table.find(' ', table.find('LEFT OUTER JOIN') + 16)]]
+            else:
+                tables += [table[table.find('INNER JOIN') + 11:table.find(' ', table.find('INNER JOIN') + 11)]]
+
+            temp = PRINT_INFO
+            PRINT_INFO = False
+            selections = {}
+            for tbl in tables:
+                selections[tbl] = select(columns, tbl)
+            PRINT_INFO = temp
+
+            heads = {tbl: [head[:head.find(' ')] for head in selections[tbl][0]] for tbl in tables}
+
+            joined = [selections[tables[0]][0]]
+            joined[0] += [x for x in selections[tables[1]][0] if x not in joined[0]]
+
+            matching = [key[key.find('.') + 1:] for key in condition]
+            data = []
+            for record in selections[tables[0]][1:]:
+                if outerJoin:
+                    match = next((x for x in selections[tables[1]][1:] if x[heads[tables[1]].index(matching[0])] == record[heads[tables[0]].index(matching[0])]), None)
+                    if match:
+                        data += [record + [val if val is not None else '' for val in match if heads[tables[1]][match.index(val)] not in heads[tables[0]]]]
+                    else:
+                        data += [record + ['' for x in heads[tables[1]] if x not in heads[tables[0]]]]
+                else:
+                    match = next((x for x in selections[tables[1]][1:] if x[heads[tables[1]].index(matching[0])] == record[heads[tables[0]].index(matching[0])]), None)
+                    if match:
+                        data += [record + [val for val in match if heads[tables[1]][match.index(val)] not in heads[tables[0]]]]
+
+            joined += data
+            if PRINT_INFO:
+                print(f"Selecting {len(joined) - 1} records from tables {', '.join(tables)}")
+            return joined
+        else:
+            path = os.path.join(current_database, table)
+            if not os.path.exists(path):
+                # raise FileNotFoundError(f"ERROR: Table {table} does not exist")
+                print(f"ERROR: Table {table} does not exist")
+                return
+            data = ""
+            with open(path, "r") as reader:
+                data = reader.read()
+            # split up the data by its separators
+            lines = data.split("\n")
+            lines[0] = lines[0].split("|")
+            for i in range(len(lines) - 1):
+                # Little check to handle blank lines in tables
+                # - shouldn't happen in program-generated tables
+                # but it messed me up in testing so it gets some validation
+                if lines[i + 1] == "":
+                    lines.pop(i + 1)
+                    continue
+
+                # Split at quoted pipes
+                lines[i + 1] = re.split(r'"\|"', lines[i + 1])
+                # trim quotes the regex missed
+                lines[i + 1][0] = lines[i + 1][0][1:]
+                lines[i + 1][-1] = lines[i + 1][-1][:-1]
+
+            header = lines[0]
+            head = [x[:x.find(" ")] for x in header]
+            selected = [[line[x] for x in range(len(line)) if header[x][:header[x].find(" ")] in columns or columns[0] == "*"] for line in lines[1:]]
+            selected = [record for record in selected if condition == None or len([key for key in condition if record[head.index(key)] == str(condition[key])]) == len(condition)]
+            joined = [header] + selected
+
+            if PRINT_INFO:
+                print(f"Selecting {len(selected)} records from table {table}")
+            return joined
 
 def insert(table, values, columns = None):
     """Insert records into a table.
-    
+
     Arguments:
     table -- Which table to insert into
     values -- The records to insert. List of tuples
     columns -- Which columns to insert into (default is None)
-    
+
     Raises:
     FileNotFoundError if the given table does not lead to a table.
     RuntimeError if there is no database being used, or if a column is not present in the table.
@@ -433,21 +494,22 @@ def insert(table, values, columns = None):
                     # raise RuntimeError(f"ERROR: Column {col} not found in {table}")
                     print(f"ERROR: Column {col} not found in {table}")
                     return
-        print(f"Inserting {len(values)} records into {table}")
+        if PRINT_INFO:
+            print(f"Inserting {len(values)} records into {table}")
         out = []
         for value in values:
             out.append([value[tableColumns.index(x)] if columns == None or x in columns else "" for x in tableColumns])
         with open(path, 'a') as writer:
             writer.writelines([f'\n"{'"|"'.join(map(str, x))}"' for x in out])
-            
+
 def update(table, values, condition = None):
     """Update records in a table.
-    
+
     Arguments:
     table -- Which table to update
     values -- The columns to update. Dictionary
     condition -- Conditions to select data on (default is None)
-    
+
     Raises:
     FileNotFoundError if the given table does not lead to a table.
     RuntimeError if there is no database being used.
@@ -461,14 +523,17 @@ def update(table, values, condition = None):
             # raise FileNotFoundError(f"ERROR: Table {table} does not exist")
             print(f"ERROR: Table {table} does not exist")
             return
-        with open(path, "r") as reader:
-            lines = reader.read()
-        lines = lines.split("\n")
-        cols = lines.pop(0).split("|")
+        global PRINT_INFO
+        temp = PRINT_INFO
+        PRINT_INFO = False
+        selection = select(["*"], table)
+        PRINT_INFO = temp
+
+        cols = selection.pop(0)
         head = [x[:x.find(" ")] for x in cols]
         recordCount = 0
-        for line in lines:
-            record = line[1:-1].split('"|"')
+
+        for record in selection:
             if condition == None:
                 for value in values:
                     record[head.index(value)] = values[value]
@@ -480,18 +545,18 @@ def update(table, values, condition = None):
                             record[head.index(value)] = values[value]
                         recordCount += 1
                         break
-            lines[lines.index(line)] = f'"{'"|"'.join(record)}"'
-        print(f"Updating {recordCount} records from {table}")
+        if PRINT_INFO:
+            print(f"Updating {recordCount} records from {table}")
         with open(path, "w") as writer:
-            writer.writelines(['|'.join(cols), *['\n' + x for x in lines]])
-        
+            writer.writelines(['|'.join(cols), *['\n"' + '"|"'.join(x) + '"' for x in selection]])
+
 def delete(table, condition = None):
     """Delete records from a table.
-    
+
     Arguments:
     table -- Which table to delete from
     condition -- Conditions to select data on. Dictionary format for column: value (default is None)
-    
+
     Raises:
     FileNotFoundError if the given table does not lead to a table.
     RuntimeError if there is no database being used.
@@ -505,35 +570,32 @@ def delete(table, condition = None):
             # raise FileNotFoundError(f"ERROR: Table {table} does not exist")
             print(f"ERROR: Table {table} does not exist")
             return
-        with open(path, "r") as reader:
-            lines = reader.read()
-        lines = lines.split("\n")
-        cols = lines.pop(0).split("|")
+        global PRINT_INFO
+        temp = PRINT_INFO
+        PRINT_INFO = False
+        selection = select(["*"], table)
+        PRINT_INFO = temp
+
+        cols = selection.pop(0)
         head = [x[:x.find(" ")] for x in cols]
-        recordCount = len(lines)
-        for line in lines:
-            record = line[1:-1].split('"|"')
-            if condition == None:
-                lines.remove(line)
-            else:
-                for key in condition:
-                    if record[head.index(key)] == str(condition[key]):
-                        lines.remove(line)
-                        break
-        print(f"Deleting {recordCount - len(lines)} records from {table}")
+        recordCount = len(selection)
+        selection = [row for row in selection if not condition == None and not len([key for key in condition if row[head.index(key)] == str(condition[key])]) > 0]
+
+        if PRINT_INFO:
+            print(f"Deleting {recordCount - len(selection)} records from table {table}")
         with open(path, "w") as writer:
-            writer.writelines(['|'.join(cols), *['\n' + x for x in lines]])
-    
+            writer.writelines(['|'.join(cols), *['\n"' + '"|"'.join(x) + '"' for x in selection]])
+
 def validate_datatype(datatype):
     """Validate a given SQL datatype.
-    
+
     Arguments:
     datatype -- a string representing a SQL datatype.
-    
+
     Returns:
     True if the datatype is a valid SQL datatype, false otherwise.
     """
-    
+
     """
     Legal types (i just picked some out):
     CHAR(size) 0 <= size <= 255 = 1
@@ -553,7 +615,19 @@ def validate_datatype(datatype):
 
 def print_table(rows):
     """Print a table (list of lists) in a pretty format"""
-    pass
+    if rows == None: return
+    widths = [max([len(str(row[i])) for row in rows]) for i in range(len(rows[0]))]
+    for row in rows:
+        for i in range(len(rows[0])):
+            print(f"+{'-' * (widths[i] + 2)}", end = "")
+        print("+")
+        for j in range(len(rows[0])):
+            print(f"|{row[j].center(widths[j] + 2)}", end = "")
+        print("|")
+    # Last line
+    for k in range(len(rows[0])):
+        print(f"+{'-' * (widths[k] + 2)}", end = "")
+    print("+")
 
 def test():
     """Testing"""
