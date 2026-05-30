@@ -20,15 +20,15 @@ INSERT INTO Sales (employeeID, productID) VALUES (1, 355);
 INSERT INTO Sales (employeeID, productID) VALUES (2, 544);
 
 /* Implicit Inner Join */
-SELECT * FROM Employee E, Sales S 
+SELECT * FROM Employee E, Sales S
 WHERE E.id = S.employeeID;
 
 /* Explicit Inner Join */
-SELECT * FROM Employee E 
+SELECT * FROM Employee E
 INNER JOIN Sales S ON E.id = S.employeeID;
 
 /* The following will include Gill */
-SELECT * FROM Employee E 
+SELECT * FROM Employee E
 LEFT OUTER JOIN Sales S ON E.id = S.employeeID;
 
 -- Expected output
