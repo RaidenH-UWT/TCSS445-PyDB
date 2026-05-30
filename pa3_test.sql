@@ -31,6 +31,10 @@ INNER JOIN Sales S ON E.id = S.employeeID;
 SELECT * FROM Employee E
 LEFT OUTER JOIN Sales S ON E.id = S.employeeID;
 
+DROP TABLE Employee;
+DROP TABLE Sales;
+DROP DATABASE TCSS455_PA3;
+
 -- Expected output
 --
 -- Database TCSS455_PA3 created.
