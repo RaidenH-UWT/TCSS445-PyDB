@@ -2,7 +2,7 @@
 """Python-based database management system.
 
 Author: Raiden H
-Updated: 26-04-08
+Updated: 26-05-21
 
 Usage:
     pydb -h
@@ -18,6 +18,13 @@ Options:
     -q          Runs in quiet mode, not printing any output except errors.
 
 SQL Support:
+    -- Single line comments
+    /*
+    Multiline
+        comments
+    */
+    PRINT <text> /* Inline comments */
+
     CREATE DATABASE <name> [path="./"]
     DROP DATABASE <name> [path="./"]
     USE DATABASE <name> [path="./"]
@@ -25,10 +32,14 @@ SQL Support:
     CREATE TABLE <name> <columns>
     DROP TABLE <name>
     ALTER TABLE <name> <operation> ...
-                       ADD <columns>
-                       DROP COLUMN <column>
+                    ADD <columns>
+                    DROP COLUMN <column>
 
-    SELECT <columns> FROM <table> [WHERE <condition>]
+    SELECT <columns> FROM <table> WHERE <condition>
+                        <tables> WHERE <condition>
+                        <table> INNER JOIN <table> ON <condition>
+                        <table> LEFT OUTER JOIN <table> ON <condition>
+
     INSERT INTO <table> [columns] VALUES <values>
     UPDATE <table> SET <columns=values> [WHERE <condition>]
     DELETE FROM <table> [WHERE <condition>]
@@ -40,6 +51,118 @@ import sys
 
 PRINT_INFO = True
 current_database = ""
+
+class BPlusTree:
+    """B+ tree implementation for efficient selections
+
+    Arguments:
+    degree -- degree (minimum # child nodes, 1/2 maximum) of the B+ tree
+    """
+    def __init__(self, degree):
+        self.degree = degree
+        self.root = self.Node(self.degree)
+    
+    def __str__(self):
+        return f"BPlusTree (degree {self.degree}): \n{self.root}"
+        
+    def example(self):
+        """Set the tree to an example structure for testing
+        """
+        self.degree = 2
+        self.root = self.Node(self.degree, [80], [
+            self.Node(self.degree, [20, 60], [
+                self.Node(self.degree, [10, 15, 18], [10, 15, 18]),
+                self.Node(self.degree, [20, 30, 40, 50], [20, 30, 40, 50]),
+                self.Node(self.degree, [60, 65], [60, 65])
+            ]),
+            self.Node(self.degree, [100, 120, 140], [
+                self.Node(self.degree, [80, 85, 90], [80, 85, 90])
+            ])
+        ])
+        self.root.values[0].values[0].next = self.root.values[0].values[1]
+        self.root.values[0].values[1].next = self.root.values[0].values[2]
+        self.root.values[0].values[2].next = self.root.values[1].values[0]
+        
+    def _search(self, value):
+        """Underlying search implementation. Always returns a node
+        
+        Arguments:
+        value -- Value to search for
+        
+        Returns:
+        node -- Node the value is located in, or would be located in, whether or not the value is in the node
+        """
+        leaf = self.root
+        while not leaf.is_leaf():
+            for i in range(len(leaf.keys) + 1):
+                temp = leaf.values[i]
+                if i == len(leaf.keys):
+                    temp = leaf.values[i]
+                    break
+                if leaf.keys[i] > value:
+                    break
+                
+            leaf = temp
+        return leaf
+    
+    def search(self, value):
+        """Search the tree for a value
+        
+        Arguments:
+        value -- Value to search for
+        
+        Returns:
+        (Node, index) -- If value is found in the tree
+        None -- If value is not in the tree
+        """
+        temp = self._search(value)
+        return (temp, temp.values.index(value)) if value in temp.values else None
+    
+    def search_range(self, start, end):
+        """Search the tree for a range of values
+        
+        Arguments:
+        start -- Start of range (exclusive)
+        end -- End of range (exclusive)
+        
+        Returns:
+        value[] -- List of values inside the range in ascending order
+        """
+        node = self._search(start)
+        out = []
+        while True:
+            for val in node.values:
+                if val < end:
+                    if val > start:
+                        out.append(val)
+                else:
+                    return out
+            if node.next:
+                node = node.next
+            else:
+                return out
+
+    def insert(self, value):
+        pass
+    
+    def delete(self, value):
+        pass
+
+    class Node:
+        def __init__(self, degree, keys = [], values = []):
+            self.degree = degree
+            self.keys = keys
+            self.values = values
+            self.next = None
+        
+        def __str__(self):
+            return f'  Node (leaf: {self.is_leaf()})  Keys: {self.keys}  Values: [{'\n' + '\n'.join([str(val) for val in self.values]) if isinstance(self.values[0], BPlusTree.Node) else ' '.join([str(val) for val in self.values])}]'
+        
+        def is_leaf(self):
+            return len(self.values) == 0 or not isinstance(self.values[0], BPlusTree.Node)
+        
+        def insert(self, value, key):
+            pass
 
 def main():
     """Handle input and pass it off to helper functions."""
@@ -372,23 +495,23 @@ def select(columns, table, condition = None):
                     for cond in condition:
                         temp[cond.replace(alias[1] + '.', alias[0] + '.')] = condition[cond].replace(alias[1] + '.', alias[0] + '.')
                     condition = temp
-                    
+
                     tables[i] = alias[0]
                 selections[tables[i]] = select(columns, tables[i])
             PRINT_INFO = temp
 
             heads = {tbl: [head[:head.find(' ')] for head in selections[tbl][0]] for tbl in tables}
-
             joined = [selections[tables[0]][0]]
             joined[0] += [x for x in selections[tables[1]][0] if x not in joined[0]]
 
             matching = [[key[key.find('.') + 1:], condition[key][condition[key].find('.') + 1:]] for key in condition]
-            print(matching)
             data = []
-            for record in selections[tables[0]][1:]:
-                match = next((x for x in selections[tables[1]][1:] if x[heads[tables[1]].index(matching[0][1])] == record[heads[tables[0]].index(matching[0][0])]), None)
-                if match:
-                    data += [record + [val for val in match if heads[tables[1]][match.index(val)] not in heads[tables[0]]]]
+            for a in selections[tables[0]][1:]:
+                for b in selections[tables[1]][1:]:
+                    if a[heads[tables[0]].index(matching[0][0])] == b[heads[tables[1]].index(matching[0][1])]:
+                        aDict = {key: a[heads[tables[0]].index(key)] for key in heads[tables[0]]}
+                        bDict = {key: b[heads[tables[1]].index(key)] for key in heads[tables[1]]}
+                        data.append(join_records(aDict, bDict))
 
             joined += data
             if PRINT_INFO:
@@ -417,17 +540,16 @@ def select(columns, table, condition = None):
 
             matching = [[key[key.find('.') + 1:], condition[key][condition[key].find('.') + 1:]] for key in condition]
             data = []
-            for record in selections[tables[0]][1:]:
-                if outerJoin:
-                    match = next((x for x in selections[tables[1]][1:] if x[heads[tables[1]].index(matching[0][1])] == record[heads[tables[0]].index(matching[0][0])]), None)
-                    if match:
-                        data += [record + [val if val is not None else '' for val in match if heads[tables[1]][match.index(val)] not in heads[tables[0]]]]
-                    else:
-                        data += [record + ['' for x in heads[tables[1]] if x not in heads[tables[0]]]]
-                else:
-                    match = next((x for x in selections[tables[1]][1:] if x[heads[tables[1]].index(matching[0][1])] == record[heads[tables[0]].index(matching[0][0])]), None)
-                    if match:
-                        data += [record + [val for val in match if heads[tables[1]][match.index(val)] not in heads[tables[0]]]]
+            for a in selections[tables[0]][1:]:
+                flag = False
+                for b in selections[tables[1]][1:]:
+                    if a[heads[tables[0]].index(matching[0][0])] == b[heads[tables[1]].index(matching[0][1])]:
+                        aDict = {key: a[heads[tables[0]].index(key)] for key in heads[tables[0]]}
+                        bDict = {key: b[heads[tables[1]].index(key)] for key in heads[tables[1]]}
+                        data.append(join_records(aDict, bDict))
+                        flag = True
+                if outerJoin and not flag:
+                    data.append(a)
 
             joined += data
             if PRINT_INFO:
@@ -539,7 +661,7 @@ def update(table, values, condition = None):
 
         selection = select(["*"], table, condition)
         PRINT_INFO = temp
-        
+
         cols = selection.pop(0)
         head = [x[:x.find(" ")] for x in cols]
         recordCount = 0
@@ -584,9 +706,9 @@ def delete(table, condition = None):
         global PRINT_INFO
         temp = PRINT_INFO
         PRINT_INFO = False
-        selection = select(["*"], table, condition)
+        selection = select(["*"], table)
         PRINT_INFO = temp
-        
+
         cols = selection.pop(0)
         head = [x[:x.find(" ")] for x in cols]
         recordCount = len(selection)
@@ -624,6 +746,18 @@ def validate_datatype(datatype):
     # TODO: Datatype validation implementation
     return True
 
+def join_records(a, b):
+    """Join two record dicts together
+
+    Arguments:
+    a -- a dictionary containing keys (columns) and values (record values)
+    b -- a dictionary containing keys (columns) and values (record values)
+
+    Returns:
+    array record with columns in order of a-first, then b
+    """
+    return [a[key] for key in a] + [b[key] for key in b if key not in a.keys()]
+
 def print_table(rows):
     """Print a table (list of lists) in a pretty format"""
     if rows == None: return
@@ -643,6 +777,11 @@ def print_table(rows):
 
 def test():
     """Testing"""
+    temp = BPlusTree(10)
+    temp.example()
+    search = temp.search(10) or ('None', '')
+    print(search[0], search[1])
+    print(temp.search_range(8, 91))
     return
 
 if __name__ == "__main__":
