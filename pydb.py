@@ -61,6 +61,7 @@ class BPlusTree:
     def __init__(self, degree):
         self.degree = degree
         self.root = self.Node(self.degree)
+        self.root.parent = self
     
     def __str__(self):
         return f"BPlusTree (degree {self.degree}): \n{self.root}"
@@ -83,14 +84,21 @@ class BPlusTree:
         self.root.values[0].values[1].next = self.root.values[0].values[2]
         self.root.values[0].values[2].next = self.root.values[1].values[0]
         
+        self.root.values[0].parent = self.root
+        self.root.values[0].values[0].parent = self.root.values[0]
+        self.root.values[0].values[1].parent = self.root.values[0]
+        self.root.values[0].values[2].parent = self.root.values[0]
+        self.root.values[1].parent = self.root
+        self.root.values[1].values[0].parent = self.root.values[1] 
+        
     def _search(self, value):
-        """Underlying search implementation. Always returns a node
+        """Internal search implementation. Always returns a node.
         
         Arguments:
-        value -- Value to search for
+        value -- Value to search for.
         
         Returns:
-        node -- Node the value is located in, or would be located in, whether or not the value is in the node
+        node -- Node the value is located in, or would be located in, whether or not the value is in the node.
         """
         leaf = self.root
         while not leaf.is_leaf():
@@ -106,27 +114,27 @@ class BPlusTree:
         return leaf
     
     def search(self, value):
-        """Search the tree for a value
+        """Search the tree for a value.
         
         Arguments:
-        value -- Value to search for
+        value -- Value to search for.
         
         Returns:
-        (Node, index) -- If value is found in the tree
-        None -- If value is not in the tree
+        (Node, index) -- If value is found in the tree.
+        None -- If value is not in the tree.
         """
         temp = self._search(value)
         return (temp, temp.values.index(value)) if value in temp.values else None
     
     def search_range(self, start, end):
-        """Search the tree for a range of values
+        """Search the tree for a range of values.
         
         Arguments:
-        start -- Start of range (exclusive)
-        end -- End of range (exclusive)
+        start -- Start of range (exclusive).
+        end -- End of range (exclusive).
         
         Returns:
-        value[] -- List of values inside the range in ascending order
+        value[] -- List of values inside the range in ascending order.
         """
         node = self._search(start)
         out = []
@@ -143,25 +151,84 @@ class BPlusTree:
                 return out
 
     def insert(self, value):
-        pass
+        """Insert a value into the BPlusTree.
+        
+        Arguments:
+        value -- Value to insert into the tree. Must be of a comparable type.
+        """
+        target = self._search(value)
+        target.insert(value, value)         
     
     def delete(self, value):
-        pass
+        """Delete a value from the BPlusTree.
+        
+        Arguments:
+        value -- Value to delete from the tree.
+        """
+        target = self._search(value)
+        target.delete(value)
 
     class Node:
-        def __init__(self, degree, keys = [], values = []):
+        """BPlusTree Node inner class.
+        
+        Arguments:
+        degree -- Degree of the Node. Must match the BPlusTree the Node is a part of.
+        keys -- Array of keys. Keys may be of any comparable type.
+        values -- Array of values. May either be the same type as the keys, or Nodes themselves.
+        parent -- Parent Node of this Node.
+        """
+        def __init__(self, degree, keys = [], values = [], parent = None):
             self.degree = degree
             self.keys = keys
             self.values = values
+            self.parent = parent
             self.next = None
         
         def __str__(self):
             return f'  Node (leaf: {self.is_leaf()})  Keys: {self.keys}  Values: [{'\n' + '\n'.join([str(val) for val in self.values]) if isinstance(self.values[0], BPlusTree.Node) else ' '.join([str(val) for val in self.values])}]'
         
         def is_leaf(self):
+            """Returns true if this Node is a leaf, false otherwise.
+            """
             return len(self.values) == 0 or not isinstance(self.values[0], BPlusTree.Node)
         
-        def insert(self, value, key):
+        def insert(self, key, value):
+            """Insert a key/value pair into the node, splitting if necessary.
+            
+            Arguments:
+            key -- Key to insert. May be of any comparable type.
+            value -- Value to insert. May either be the same type as the key, or a Node itself.
+            """
+            index = ([x for x in range(len(self.keys)) if self.keys[x] < key] or [-1])[-1]
+            self.keys.insert(index + 1, key)
+            self.values.insert(index + 1 + (type(value) == BPlusTree.Node), value)
+            if len(self.keys) > 2 * self.degree:
+                self.split()
+            
+        def split(self):
+            """Split the node into two nodes and shift the center element to the parent.
+            """
+            mid = len(self.keys) // 2
+            new = BPlusTree.Node(self.degree, self.keys[mid:], self.values[mid:], self.parent)
+            new.next = self.next
+            
+            # Special case for root; need to keep the tree root pointing to the right spot
+            if type(self.parent) == BPlusTree:
+                tree = self.parent
+                self.parent = BPlusTree.Node(self.degree)
+                tree.root = self.parent
+                self.parent.parent = tree
+                
+            self.parent.insert(self.keys[mid], new)
+            
+            self.keys = self.keys[:mid]
+            self.values = self.values[:mid]
+            self.next = new
+            
+        def delete(self, value):
+            pass
+            
+        def merge(self):
             pass
 
 def main():
@@ -779,9 +846,14 @@ def test():
     """Testing"""
     temp = BPlusTree(10)
     temp.example()
-    search = temp.search(10) or ('None', '')
-    print(search[0], search[1])
-    print(temp.search_range(8, 91))
+    print(type(temp.root))
+    print(temp)
+    temp.insert(19)
+    print(temp)
+    temp.insert(25)
+    print(temp)
+    temp.insert(12)
+    print(temp)
     return
 
 if __name__ == "__main__":
