@@ -108,7 +108,11 @@ class BPlusTree:
         """
         leaf = self.root
         while not leaf.is_leaf():
-            for i in range(len(leaf.keys) + 1):
+            if leaf == self.root and len(leaf.keys) < self.degree:
+                n = len(leaf.keys)
+            else:
+                n = len(leaf.keys) + 1
+            for i in range(n):
                 temp = leaf.values[i]
                 if i == len(leaf.keys):
                     temp = leaf.values[i]
@@ -163,10 +167,11 @@ class BPlusTree:
         value -- Value to insert into the tree. Must be of a comparable type if key is not provided.
         value -- Key to insert into the tree. Must be of a comparable type. Optional.
         """
-        target = self._search(value)
         if key:
+            target = self._search(key)
             target.insert(key, value)
         else:
+            target = self._search(value)
             target.insert(value, value)         
     
     def delete(self, value):
@@ -383,7 +388,9 @@ def execute(cmd):
             cond = cmd[cmd.upper().find("WHERE") + 6:].strip() if "WHERE" in cmd.upper() else None
         # transform cond into a dict
         if not cond == None:
-            cond = {cond[:cond.find('=')].strip(): re.sub(r'[\'"]', '', cond[cond.find('=') + 1:]).strip()}
+            # cond = {cond[:cond.find('=')].strip(): re.sub(r'[\'"]', '', cond[cond.find('=') + 1:]).strip()}
+            cond = re.split(" and ", cond, flags=re.IGNORECASE)
+            cond = {c[:c.find(" ")]: {"comp": c[c.find(" ") + 1:c.find(" ", c.find(" ") + 1)], "value": c[c.rfind(" ") + 1:]} for c in cond}
         print_table(select(cols, table, cond))
     elif cmd[:11].upper() == "INSERT INTO":
         table = cmd[12:cmd.find(" ", 12)]
@@ -693,6 +700,7 @@ def select(columns, table, condition = None):
     List of lists, with the first entry represeting table columns and subsequent entries
     representing individual records.
     """
+    print("Selection conditions\n" + str(condition))
     if current_database == "":
         # raise RuntimeError("No database in use")
         print("ERROR: No database in use")
@@ -708,19 +716,17 @@ def select(columns, table, condition = None):
                 if ' ' in tables[i]:
                     alias = tables[i].split(' ')
                     temp = {}
-                    for cond in condition:
-                        temp[cond.replace(alias[1] + '.', alias[0] + '.')] = condition[cond].replace(alias[1] + '.', alias[0] + '.')
-                    condition = temp
-
+                    condition = {c.replace(alias[1], alias[0]): {"comp": condition[c]["comp"], "value": condition[c]["value"].replace(alias[1], alias[0])} for c in condition}
                     tables[i] = alias[0]
                 selections[tables[i]] = select(columns, tables[i])
             PRINT_INFO = temp
-
+            
             heads = {tbl: [head[:head.find(' ')] for head in selections[tbl][0]] for tbl in tables}
             joined = [selections[tables[0]][0]]
             joined[0] += [x for x in selections[tables[1]][0] if x not in joined[0]]
 
-            matching = [[key[key.find('.') + 1:], condition[key][condition[key].find('.') + 1:]] for key in condition]
+            matching = [[key[key.find('.') + 1:], condition[key]["value"][condition[key]["value"].find('.') + 1:]] for key in condition]
+            print(matching)
             data = []
             for a in selections[tables[0]][1:]:
                 for b in selections[tables[1]][1:]:
@@ -993,25 +999,14 @@ def print_table(rows):
 
 def test():
     """Testing"""
-    # create_database("testing")
-    # use_database("testing")
-    # create_table("tab", [('id', 'int'), ('name', 'varchar(100)'), ('department', 'varchar(50)'), ('salary', 'int')])
-    # load_csv("data.csv", "tab")
-    # create_index("test_idx", "tab", "salary")
-    # drop_table("tab")
-    # drop_database("testing")
-    tree = BPlusTree(2)
-    print(tree)
-    tree.insert("some value", 3)
-    print(tree)
-    tree.insert("some val", 5)
-    print(tree)
-    tree.insert("value", 8)
-    print(tree)
-    tree.insert("val", 4)
-    print(tree)
-    tree.insert("some", 2)
-    print(tree)
+    create_database("testing")
+    use_database("testing")
+    create_table("tab", [('id', 'int'), ('name', 'varchar(100)'), ('department', 'varchar(50)'), ('salary', 'int')])
+    create_table("tab2", [('id', 'int')])
+    load_csv("data.csv", "tab")
+    create_index("test_idx", "tab", "salary")
+    drop_table("tab")
+    drop_database("testing")
     return
 
 if __name__ == "__main__":
