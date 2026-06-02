@@ -45,12 +45,14 @@ SQL Support:
     DELETE FROM <table> [WHERE <condition>]
 """
 
+import csv
 import os
 import re
 import sys
 
 PRINT_INFO = True
 current_database = ""
+indexes = {}
 
 class BPlusTree:
     """B+ tree implementation for efficient selections
@@ -154,14 +156,18 @@ class BPlusTree:
             else:
                 return out
 
-    def insert(self, value):
+    def insert(self, value, key = None):
         """Insert a value into the BPlusTree.
         
         Arguments:
-        value -- Value to insert into the tree. Must be of a comparable type.
+        value -- Value to insert into the tree. Must be of a comparable type if key is not provided.
+        value -- Key to insert into the tree. Must be of a comparable type. Optional.
         """
         target = self._search(value)
-        target.insert(value, value)         
+        if key:
+            target.insert(key, value)
+        else:
+            target.insert(value, value)         
     
     def delete(self, value):
         """Delete a value from the BPlusTree.
@@ -191,7 +197,7 @@ class BPlusTree:
             self.prev = None
         
         def __str__(self):
-            return f'  Node (leaf: {self.is_leaf()})  Keys: {self.keys}  Values: [{'\n' + '\n'.join([str(val) for val in self.values]) if isinstance(self.values[0], BPlusTree.Node) else ' '.join([str(val) for val in self.values])}]'
+            return f'  Node (leaf: {self.is_leaf()})  Keys: {self.keys}  Values: [{'\n' + '\n'.join([str(val) for val in self.values]) if isinstance(self.values[0] if len(self.values) > 0 else "[]", BPlusTree.Node) else ' '.join([str(val) for val in self.values])}]'
         
         def is_leaf(self):
             """Returns true if this Node is a leaf, false otherwise.
@@ -218,12 +224,13 @@ class BPlusTree:
             new = BPlusTree.Node(self.degree, self.keys[mid:], self.values[mid:], self.parent)
             new.next = self.next
             new.prev = self
-            self.next.prev = new
+            if self.next:
+                self.next.prev = new
             
             # Special case for root; need to keep the tree root pointing to the right spot
             if type(self.parent) == BPlusTree:
                 tree = self.parent
-                self.parent = BPlusTree.Node(self.degree)
+                self.parent = BPlusTree.Node(self.degree, [], [])
                 tree.root = self.parent
                 self.parent.parent = tree
                 
@@ -323,6 +330,7 @@ def _interactive():
                 continue
             execute(cmd)
         except KeyboardInterrupt:
+            print()
             return
 
 def execute(cmd):
@@ -359,6 +367,10 @@ def execute(cmd):
         drop_table(cmd[11:])
     elif cmd[:11].upper() == "ALTER TABLE":
         alter_table(cmd[12:cmd.find(" ", 12)], cmd[cmd.find(" ", 12) + 1:])
+    elif cmd[:12].upper() == "CREATE INDEX":
+        create_index(cmd[13:cmd.find(" ", 13)], cmd[cmd.upper().find("ON") + 3:cmd.find("(") - 1], cmd[cmd.find("(") + 1:-1])
+    elif cmd[:16].upper() == "LOAD DATA INFILE":
+        load_csv(cmd[17:cmd.find(" ", 17)], cmd[cmd.rfind(" ") + 1:])
     elif cmd[:6].upper() == "SELECT":
         # everything between SELECT and FROM, strip the whitespace, and split on commas
         cols = re.sub(r"\s", "", cmd[6:cmd.upper().find("FROM")]).split(",")
@@ -402,7 +414,7 @@ def execute(cmd):
     elif cmd[:5].upper() == "PRINT":
         print(cmd[6:])
     else:
-        # raise SyntaxError(f"ERROR: Command {cmd} could not be parsed")
+        # raise SyntaxError(f"Command {cmd} could not be parsed")
         print(f"ERROR: Command {cmd} could not be parsed")
 
 def create_database(name, path = "."):
@@ -421,7 +433,7 @@ def create_database(name, path = "."):
         if PRINT_INFO:
             print(f"Created database {name} at {os.path.join(path, name)}")
     except FileExistsError:
-        # raise FileExistsError(f"ERROR: Database {full_path} already exists.")
+        # raise FileExistsError(f"Database {full_path} already exists.")
         print(f"ERROR: Database {full_path} already exists.")
 
 def drop_database(name, path = "."):
@@ -440,7 +452,7 @@ def drop_database(name, path = "."):
         if PRINT_INFO:
             print(f"Deleted database {name} at {os.path.join(path, name)}")
     except FileNotFoundError:
-        # raise FileNotFoundError(f"ERROR: Directory {full_path} does not exist.")
+        # raise FileNotFoundError(f"Directory {full_path} does not exist.")
         print(f"ERROR: Directory {full_path} does not exist.")
 
 def use_database(name, path = "."):
@@ -456,7 +468,7 @@ def use_database(name, path = "."):
     full_path = os.path.abspath(os.path.join(os.path.expanduser(path), name))
     exists = os.path.exists(full_path)
     if not exists:
-        # raise FileNotFoundError(f"ERROR: Directory {full_path} does not exist")
+        # raise FileNotFoundError(f"Directory {full_path} does not exist")
         print(f"ERROR: Directory {full_path} does not exist")
     else:
         global current_database
@@ -478,15 +490,15 @@ def create_table(name, columns):
     """
     path = os.path.join(current_database, name)
     if current_database == "":
-        # raise RuntimeError("ERROR: No database in use")
+        # raise RuntimeError("No database in use")
         print("ERROR: No database in use")
     elif os.path.exists(path):
-        # raise FileExistsError(f"ERROR: Table {path} already exists")
+        # raise FileExistsError(f"Table {path} already exists")
         print(f"ERROR: Table {path} already exists")
     else:
         for col in columns:
             if not validate_datatype(col[1]):
-                # raise SyntaxError(f"ERROR: Column: {col} has illegal datatype")
+                # raise SyntaxError(f"Column: {col} has illegal datatype")
                 print(f"ERROR: Column: {col} has illegal datatype")
         with open(path, "w") as table:
             table.write("|".join([f"{col[0]} {col[1]}" for col in columns]))
@@ -505,7 +517,7 @@ def drop_table(name):
     """
     path = os.path.join(current_database, name)
     if current_database == "":
-        # raise RuntimeError("ERROR: No database in use")
+        # raise RuntimeError("No database in use")
         print("ERROR: No database in use")
     else:
         try:
@@ -513,7 +525,7 @@ def drop_table(name):
             if PRINT_INFO:
                 print(f"Dropped table {name}")
         except FileNotFoundError:
-            # raise FileNotFoundError(f"ERROR: Table {path} does not exist.")
+            # raise FileNotFoundError(f"Table {path} does not exist.")
             print(f"ERROR: Table {name} does not exist.")
 
 def alter_table(name, cmd):
@@ -529,7 +541,7 @@ def alter_table(name, cmd):
     SyntaxError if cmd uses invalid syntax
     """
     if current_database == "":
-        # raise RuntimeError("ERROR: No database in use")
+        # raise RuntimeError("No database in use")
         print("ERROR: No database in use")
     else:
         try:
@@ -559,13 +571,111 @@ def alter_table(name, cmd):
                     # trim the trailing newline
                     lines[-1] = lines[-1][:-1]
                 else:
-                    # raise SyntaxError(f"ERROR: Column {column} not in table {name}")
+                    # raise SyntaxError(f"Column {column} not in table {name}")
                     print(f"ERROR: Column {column} not in table {name}")
                     return
             with open(os.path.join(current_database, name), "w") as outFile:
                 outFile.writelines(lines)
         except FileNotFoundError:
             print(f"ERROR: Table {name} does not exist.")
+
+def create_index(name, table, column):
+    """Create a B+ tree index on a column for faster queries.
+
+    Arguments:
+    name -- Name of the index.
+    table -- Table to create the index on.
+    column -- Column to create the index on.
+
+    Raises:
+    FileNotFoundError if the given name does not lead to a table.
+    RuntimeError if there is no database being used, or if the column is
+        not present in the table.
+    """
+    print(f"Create index: {name}, {table}, {column}")
+    if current_database == "":
+        # raise RuntimeError("No database in use")
+        print("ERROR: No database in use")
+    else:
+        path = os.path.join(current_database, table)
+        if not os.path.exists(path):
+            # raise FileNotFoundError(f"Table {table} does not exist")
+            print(f"ERROR: Table {table} does not exist")
+            return
+        
+        data = ""
+        with open(path, "r") as reader:
+            data = reader.read()
+        # split up the data by its separators
+        lines = data.split("\n")
+        lines[0] = lines[0].split("|")
+        for i in range(len(lines) - 1):
+            # Little check to handle blank lines in tables
+            # - shouldn't happen in program-generated tables
+            # but it messed me up in testing so it gets some validation
+            if lines[i + 1] == "":
+                lines.pop(i + 1)
+                continue
+
+            # Split at quoted pipes
+            lines[i + 1] = re.split(r'"\|"', lines[i + 1])
+            # trim quotes the regex missed
+            lines[i + 1][0] = lines[i + 1][0][1:]
+            lines[i + 1][-1] = lines[i + 1][-1][:-1]
+
+        header = lines[0]
+        head = [x[:x.find(" ")] for x in header]
+
+        if column not in head:
+            # raise RuntimeError(f"Column {column} not found in {table}")
+            print(f"ERROR: Column {column} not found in {table}")
+            return
+        if table not in indexes:
+            indexes[table] = {}
+        # NOTE: Magic number degree is from assignment spec
+        indexes[table][column] = BPlusTree(10)
+        for line in lines[1:]:
+            indexes[table][column].insert(line, line[head.index(column)])
+    return
+
+def load_csv(name, table):
+    """Load data from a CSV file into a table.
+
+    Arguments:
+    name -- Name of the CSV file to load, including extension. Must have
+        the same number of columns as the table.
+    table -- Table to load the data into.
+
+    Raises:
+    FileNotFoundError if the given name does not lead to a CSV file, or
+        the given table does not lead to a table.
+    RuntimeError if there is no database being used, or if the number of
+        columns in the CSV file does not match the table.
+    """
+    if current_database == "":
+        # raise RuntimeError("No database in use")
+        print("ERROR: No database in use")
+    else:
+        global PRINT_INFO
+        if not os.path.exists(name):
+            # raise FileNotFoundError(f"CSV file {name} does not exist")
+            print(f"ERROR: CSV file {name} does not exist")
+            return
+        path = os.path.join(current_database, table)
+        if not os.path.exists(path):
+            # raise FileNotFoundError(f"Table {table} does not exist")
+            print(f"ERROR: Table {table} does not exist")
+            return
+        rows = []
+        with open(name, 'r') as csvfile:
+            reader = csv.reader(csvfile, delimiter=",")
+            for row in reader:
+                rows.append(row)
+        temp = PRINT_INFO
+        PRINT_INFO = False
+        insert(table, rows)
+        PRINT_INFO = temp
+        print(f"Loaded {len(rows)} records into {table} from {name}")
 
 def select(columns, table, condition = None):
     """Select data from a table.
@@ -584,12 +694,11 @@ def select(columns, table, condition = None):
     representing individual records.
     """
     if current_database == "":
-        # raise RuntimeError("ERROR: No database in use")
+        # raise RuntimeError("No database in use")
         print("ERROR: No database in use")
     else:
         global PRINT_INFO
         if ", " in table:
-            # TODO: allow joins checking for equality on mismatched field names
             # implicit inner join
             temp = PRINT_INFO
             PRINT_INFO = False
@@ -644,7 +753,7 @@ def select(columns, table, condition = None):
 
             joined = [selections[tables[0]][0]]
             joined[0] += [x for x in selections[tables[1]][0] if x not in joined[0]]
-
+            # TODO: Implement range queries and queries on indexes
             matching = [[key[key.find('.') + 1:], condition[key][condition[key].find('.') + 1:]] for key in condition]
             data = []
             for a in selections[tables[0]][1:]:
@@ -665,7 +774,7 @@ def select(columns, table, condition = None):
         else:
             path = os.path.join(current_database, table)
             if not os.path.exists(path):
-                # raise FileNotFoundError(f"ERROR: Table {table} does not exist")
+                # raise FileNotFoundError(f"Table {table} does not exist")
                 print(f"ERROR: Table {table} does not exist")
                 return
             data = ""
@@ -712,16 +821,16 @@ def insert(table, values, columns = None):
     SyntaxError if the lengths of values and columns do not match.
     """
     if current_database == "":
-        # raise RuntimeError("ERROR: No database in use")
+        # raise RuntimeError("No database in use")
         print("ERROR: No database in use")
     else:
         path = os.path.join(current_database, table)
         if not os.path.exists(path):
-            # raise FileNotFoundError(f"ERROR: Table {table} does not exist")
+            # raise FileNotFoundError(f"Table {table} does not exist")
             print(f"ERROR: Table {table} does not exist")
             return
         if (not columns == None) and (not len(values[0]) == len(columns)):
-            # raise SyntaxError(f"ERROR: Length of values and columns does not match")
+            # raise SyntaxError(f"Length of values and columns does not match")
             print(f"ERROR: Length of values and columns does not match")
             return
         with open(path, "r") as reader:
@@ -730,7 +839,7 @@ def insert(table, values, columns = None):
         if not columns == None:
             for col in columns:
                 if not col in tableColumns:
-                    # raise RuntimeError(f"ERROR: Column {col} not found in {table}")
+                    # raise RuntimeError(f"Column {col} not found in {table}")
                     print(f"ERROR: Column {col} not found in {table}")
                     return
         if PRINT_INFO:
@@ -754,12 +863,12 @@ def update(table, values, condition = None):
     RuntimeError if there is no database being used.
     """
     if current_database == "":
-        # raise RuntimeError("ERROR: No database in use")
+        # raise RuntimeError("No database in use")
         print("ERROR: No database in use")
     else:
         path = os.path.join(current_database, table)
         if not os.path.exists(path):
-            # raise FileNotFoundError(f"ERROR: Table {table} does not exist")
+            # raise FileNotFoundError(f"Table {table} does not exist")
             print(f"ERROR: Table {table} does not exist")
             return
         global PRINT_INFO
@@ -802,12 +911,12 @@ def delete(table, condition = None):
     RuntimeError if there is no database being used.
     """
     if current_database == "":
-        # raise RuntimeError("ERROR: No database in use")
+        # raise RuntimeError("No database in use")
         print("ERROR: No database in use")
     else:
         path = os.path.join(current_database, table)
         if not os.path.exists(path):
-            # raise FileNotFoundError(f"ERROR: Table {table} does not exist")
+            # raise FileNotFoundError(f"Table {table} does not exist")
             print(f"ERROR: Table {table} does not exist")
             return
         global PRINT_INFO
@@ -884,15 +993,25 @@ def print_table(rows):
 
 def test():
     """Testing"""
-    temp = BPlusTree(10)
-    temp.example()
-    temp.insert(19)
-    temp.insert(25)
-    temp.delete(30)
-    temp.delete(25)
-    print(temp)
-    temp.delete(40)
-    print(temp)
+    # create_database("testing")
+    # use_database("testing")
+    # create_table("tab", [('id', 'int'), ('name', 'varchar(100)'), ('department', 'varchar(50)'), ('salary', 'int')])
+    # load_csv("data.csv", "tab")
+    # create_index("test_idx", "tab", "salary")
+    # drop_table("tab")
+    # drop_database("testing")
+    tree = BPlusTree(2)
+    print(tree)
+    tree.insert("some value", 3)
+    print(tree)
+    tree.insert("some val", 5)
+    print(tree)
+    tree.insert("value", 8)
+    print(tree)
+    tree.insert("val", 4)
+    print(tree)
+    tree.insert("some", 2)
+    print(tree)
     return
 
 if __name__ == "__main__":
