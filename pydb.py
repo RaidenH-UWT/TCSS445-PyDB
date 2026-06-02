@@ -84,6 +84,10 @@ class BPlusTree:
         self.root.values[0].values[1].next = self.root.values[0].values[2]
         self.root.values[0].values[2].next = self.root.values[1].values[0]
         
+        self.root.values[0].values[1].prev = self.root.values[0].values[0]
+        self.root.values[0].values[2].prev = self.root.values[0].values[1]
+        self.root.values[1].values[0].prev = self.root.values[0].values[2]
+        
         self.root.values[0].parent = self.root
         self.root.values[0].values[0].parent = self.root.values[0]
         self.root.values[0].values[1].parent = self.root.values[0]
@@ -166,7 +170,8 @@ class BPlusTree:
         value -- Value to delete from the tree.
         """
         target = self._search(value)
-        target.delete(value)
+        if value in target.values:
+            target.delete(value)
 
     class Node:
         """BPlusTree Node inner class.
@@ -183,6 +188,7 @@ class BPlusTree:
             self.values = values
             self.parent = parent
             self.next = None
+            self.prev = None
         
         def __str__(self):
             return f'  Node (leaf: {self.is_leaf()})  Keys: {self.keys}  Values: [{'\n' + '\n'.join([str(val) for val in self.values]) if isinstance(self.values[0], BPlusTree.Node) else ' '.join([str(val) for val in self.values])}]'
@@ -211,6 +217,8 @@ class BPlusTree:
             mid = len(self.keys) // 2
             new = BPlusTree.Node(self.degree, self.keys[mid:], self.values[mid:], self.parent)
             new.next = self.next
+            new.prev = self
+            self.next.prev = new
             
             # Special case for root; need to keep the tree root pointing to the right spot
             if type(self.parent) == BPlusTree:
@@ -226,10 +234,42 @@ class BPlusTree:
             self.next = new
             
         def delete(self, value):
-            pass
+            """Delete a value from the tree, merging nodes if necessary.
+            
+            Arguments:
+            value -- Value to delete. May either be the same type as the key, or a Node itself.
+            """
+            self.values.remove(value)
+            if type(value) != BPlusTree.Node:
+                self.keys.remove(value)
+            if len(self.values) < self.degree:
+                if len(self.prev.values) > self.degree:
+                    self.values.insert(0, self.prev.values.pop())
+                    self.keys.insert(0, self.prev.keys.pop())
+                    self.parent.keys[0] = self.keys[0]
+                elif len(self.next.values) > self.degree:
+                    self.values.append(self.next.values.pop(0))
+                    self.keys.append(self.next.keys.pop(0))
+                    self.parent.keys[-1] = self.keys[-1]
+                else:
+                    self.merge()
             
         def merge(self):
-            pass
+            """Merge the node with one of it's neighbors (preferring previous).
+            """
+            # Select the node to merge with. Doesn't matter but prefers previous node.
+            if len(self.prev.values) + len(self.values) < 2 * self.degree:
+                self.prev.parent.keys.pop(self.prev.parent.values.index(self.prev))
+                self.keys = self.prev.keys + self.keys
+                self.values = self.prev.values + self.values
+                self.prev.prev.next = self
+                self.prev.parent.delete(self.prev)
+            else:
+                self.parent.keys.pop(self.parent.values.index(self))
+                self.keys = self.keys + self.next.keys
+                self.values = self.values + self.next.values
+                self.next.next.prev = self
+                self.next.parent.delete(self.next)
 
 def main():
     """Handle input and pass it off to helper functions."""
@@ -846,13 +886,12 @@ def test():
     """Testing"""
     temp = BPlusTree(10)
     temp.example()
-    print(type(temp.root))
-    print(temp)
     temp.insert(19)
-    print(temp)
     temp.insert(25)
+    temp.delete(30)
+    temp.delete(25)
     print(temp)
-    temp.insert(12)
+    temp.delete(40)
     print(temp)
     return
 
