@@ -108,10 +108,7 @@ class BPlusTree:
         """
         leaf = self.root
         while not leaf.is_leaf():
-            if leaf == self.root and len(leaf.keys) < self.degree:
-                n = len(leaf.keys)
-            else:
-                n = len(leaf.keys) + 1
+            n = len(leaf.keys) + 1
             for i in range(n):
                 temp = leaf.values[i]
                 if i == len(leaf.keys):
@@ -123,25 +120,36 @@ class BPlusTree:
             leaf = temp
         return leaf
     
-    def search(self, value):
-        """Search the tree for a value.
+    def search(self, key):
+        """Search the tree for a key.
         
         Arguments:
-        value -- Value to search for.
+        key -- Value to search for.
         
         Returns:
-        (Node, index) -- If value is found in the tree.
-        None -- If value is not in the tree.
+        (Node, index) -- If key is found in the tree.
+        None -- If key is not in the tree.
         """
-        temp = self._search(value)
-        return (temp, temp.values.index(value)) if value in temp.values else None
+        node = self._search(key)
+        out = []
+        while True:
+            for i in range(len(node.keys)):
+                if node.keys[i] == key:
+                    if type(node.values[i][0]) == list:
+                        out.extend(node.values[i])
+                    else:
+                        out.append(node.values[i])
+            if node.next:
+                node = node.next
+            else:
+                return out
     
-    def search_range(self, start, end):
+    def search_range(self, start = None, end = None):
         """Search the tree for a range of values.
         
         Arguments:
-        start -- Start of range (exclusive).
-        end -- End of range (exclusive).
+        start -- Start of range (exclusive). Optional.
+        end -- End of range (exclusive). Optional.
         
         Returns:
         value[] -- List of values inside the range in ascending order.
@@ -149,10 +157,13 @@ class BPlusTree:
         node = self._search(start)
         out = []
         while True:
-            for val in node.values:
-                if val < end:
-                    if val > start:
-                        out.append(val)
+            for i in range(len(node.keys)):
+                if not end or node.keys[i] < end:
+                    if not start or node.keys[i] > start:
+                        if type(node.values[i][0]) == list:
+                            out.extend(node.values[i])
+                        else:
+                            out.append(node.values[i])
                 else:
                     return out
             if node.next:
@@ -217,10 +228,17 @@ class BPlusTree:
             value -- Value to insert. May either be the same type as the key, or a Node itself.
             """
             index = ([x for x in range(len(self.keys)) if self.keys[x] < key] or [-1])[-1]
-            self.keys.insert(index + 1, key)
-            self.values.insert(index + 1 + (type(value) == BPlusTree.Node), value)
-            if len(self.keys) > 2 * self.degree:
-                self.split()
+            if key not in self.keys:
+                self.keys.insert(index + 1, key)
+                self.values.insert(index + 1 + (type(value) == BPlusTree.Node), value)
+                if len(self.keys) > 2 * self.degree:
+                    self.split()
+            else:
+                index += 1
+                if type(self.values[index][0]) == list:
+                    self.values[index] = self.values[index] + [value]
+                else:
+                    self.values[index] = [self.values[index]] + [value]
             
         def split(self):
             """Split the node into two nodes and shift the center element to the parent.
@@ -235,12 +253,10 @@ class BPlusTree:
             # Special case for root; need to keep the tree root pointing to the right spot
             if type(self.parent) == BPlusTree:
                 tree = self.parent
-                self.parent = BPlusTree.Node(self.degree, [], [])
+                self.parent = BPlusTree.Node(self.degree, [], [self], tree)
                 tree.root = self.parent
-                self.parent.parent = tree
-                
+                new.parent = self.parent
             self.parent.insert(self.keys[mid], new)
-            
             self.keys = self.keys[:mid]
             self.values = self.values[:mid]
             self.next = new
@@ -373,9 +389,9 @@ def execute(cmd):
     elif cmd[:11].upper() == "ALTER TABLE":
         alter_table(cmd[12:cmd.find(" ", 12)], cmd[cmd.find(" ", 12) + 1:])
     elif cmd[:12].upper() == "CREATE INDEX":
-        create_index(cmd[13:cmd.find(" ", 13)], cmd[cmd.upper().find("ON") + 3:cmd.find("(") - 1], cmd[cmd.find("(") + 1:-1])
+        create_index(cmd[13:cmd.find(" ", 13)], cmd[cmd.upper().find("ON") + 3:cmd.find("(")].strip(), cmd[cmd.find("(") + 1:-1])
     elif cmd[:16].upper() == "LOAD DATA INFILE":
-        load_csv(cmd[17:cmd.find(" ", 17)], cmd[cmd.rfind(" ") + 1:])
+        load_csv(cmd[17:cmd.find(" ", 17)].strip().replace("'", "").replace('"', ""), cmd[cmd.rfind(" ") + 1:])
     elif cmd[:6].upper() == "SELECT":
         # everything between SELECT and FROM, strip the whitespace, and split on commas
         cols = re.sub(r"\s", "", cmd[6:cmd.upper().find("FROM")]).split(",")
@@ -387,12 +403,18 @@ def execute(cmd):
         else:
             cond = cmd[cmd.upper().find("WHERE") + 6:].strip() if "WHERE" in cmd.upper() else None
         # transform cond into a dict
+        structCond = {}
         if not cond == None:
-            # cond = {cond[:cond.find('=')].strip(): re.sub(r'[\'"]', '', cond[cond.find('=') + 1:]).strip()}
             cond = re.split(" and ", cond, flags=re.IGNORECASE)
-            cond = {c[:c.find(" ")]: {"comp": c[c.find(" ") + 1:c.find(" ", c.find(" ") + 1)], "value": c[c.rfind(" ") + 1:]} for c in cond}
-        print_table(select(cols, table, cond))
+            for c in cond:
+                if c[:c.find(" ")] in structCond:
+                    structCond[c[:c.find(" ")]].append({"comp": c[c.find(" ") + 1:c.find(" ", c.find(" ") + 1)], "value": c[c.rfind(" ") + 1:]})
+                else:
+                    structCond[c[:c.find(" ")]] = [{"comp": c[c.find(" ") + 1:c.find(" ", c.find(" ") + 1)], "value": c[c.rfind(" ") + 1:]}]
+        print_table(select(cols, table, structCond))
     elif cmd[:11].upper() == "INSERT INTO":
+        if cmd[cmd.find("VALUES") + 6] != " ":
+            cmd = cmd[:cmd.find("VALUES") + 6] + " " + cmd[cmd.find("VALUES") + 6:]
         table = cmd[12:cmd.find(" ", 12)]
         columns = cmd[cmd.find(table) + len(table) + 2:cmd.upper().find("VALUES") - 2].strip()
         values = re.split(r'\),\s*\(', cmd[cmd.upper().find('VALUES') + 8:-1])
@@ -599,11 +621,11 @@ def create_index(name, table, column):
     RuntimeError if there is no database being used, or if the column is
         not present in the table.
     """
-    print(f"Create index: {name}, {table}, {column}")
     if current_database == "":
         # raise RuntimeError("No database in use")
         print("ERROR: No database in use")
     else:
+        global PRINT_INFO
         path = os.path.join(current_database, table)
         if not os.path.exists(path):
             # raise FileNotFoundError(f"Table {table} does not exist")
@@ -643,7 +665,9 @@ def create_index(name, table, column):
         indexes[table][column] = BPlusTree(10)
         for line in lines[1:]:
             indexes[table][column].insert(line, line[head.index(column)])
-    return
+
+        if PRINT_INFO:
+            print(f"Created index {name} on {table}({column})")
 
 def load_csv(name, table):
     """Load data from a CSV file into a table.
@@ -682,7 +706,8 @@ def load_csv(name, table):
         PRINT_INFO = False
         insert(table, rows)
         PRINT_INFO = temp
-        print(f"Loaded {len(rows)} records into {table} from {name}")
+        if PRINT_INFO:
+            print(f"Loaded {len(rows)} records into {table} from {name}")
 
 def select(columns, table, condition = None):
     """Select data from a table.
@@ -700,7 +725,6 @@ def select(columns, table, condition = None):
     List of lists, with the first entry represeting table columns and subsequent entries
     representing individual records.
     """
-    print("Selection conditions\n" + str(condition))
     if current_database == "":
         # raise RuntimeError("No database in use")
         print("ERROR: No database in use")
@@ -726,7 +750,6 @@ def select(columns, table, condition = None):
             joined[0] += [x for x in selections[tables[1]][0] if x not in joined[0]]
 
             matching = [[key[key.find('.') + 1:], condition[key]["value"][condition[key]["value"].find('.') + 1:]] for key in condition]
-            print(matching)
             data = []
             for a in selections[tables[0]][1:]:
                 for b in selections[tables[1]][1:]:
@@ -805,8 +828,21 @@ def select(columns, table, condition = None):
 
             header = lines[0]
             head = [x[:x.find(" ")] for x in header]
-            selected = [[line[x] for x in range(len(line)) if header[x][:header[x].find(" ")] in columns or columns[0] == "*"] for line in lines[1:]]
-            selected = [record for record in selected if condition == None or len([key for key in condition if record[head.index(key)] == str(condition[key])]) == len(condition)]
+            if condition and table in indexes and all([x in indexes[table] for x in condition]):
+                col = [k for k in condition][0]
+                if condition[col][0]['comp'] == '=':
+                    selected = indexes[table][col].search(condition[col][0]['value'])
+                elif len(condition[col]) == 2:
+                    less = condition[col][0] if condition[col][0]['comp'] == '<' else condition[col][1]
+                    more = condition[col][1] if less == condition[col][0] else condition[col][0]
+                    selected = indexes[table][col].search_range(more['value'], less['value'])
+                elif condition[col][0]['comp'] == '>':
+                    selected = indexes[table][col].search_range(condition[col][0]['value'])
+                elif condition[col][0]['comp'] == '<':
+                    selected = indexes[table][col].search_range(None, condition[col][0]['value'])
+            else:
+                selected = [[line[x] for x in range(len(line)) if header[x][:header[x].find(" ")] in columns or columns[0] == "*"] for line in lines[1:]]
+                selected = [record for record in selected if condition == None or len([key for key in condition if record[head.index(key)] == str(condition[key])]) == len(condition)]
             joined = [header] + selected
 
             if PRINT_INFO:
@@ -999,14 +1035,28 @@ def print_table(rows):
 
 def test():
     """Testing"""
-    create_database("testing")
-    use_database("testing")
-    create_table("tab", [('id', 'int'), ('name', 'varchar(100)'), ('department', 'varchar(50)'), ('salary', 'int')])
-    create_table("tab2", [('id', 'int')])
-    load_csv("data.csv", "tab")
-    create_index("test_idx", "tab", "salary")
-    drop_table("tab")
-    drop_database("testing")
+    tree = BPlusTree(2)
+    tree.insert(1)
+    tree.insert(2)
+    tree.insert(3)
+    tree.insert(4)
+    # print(tree)
+    tree.insert(5)
+    print(tree)
+    tree.insert(6)
+    print(tree)
+    tree.insert(7)
+    print(tree)
+    tree.insert(8)
+    print(tree)
+    tree.insert(9)
+    print(tree)
+    tree.insert(2)
+    print(tree)
+    tree.insert(2)
+    print(tree)
+    tree.insert(2)
+    print(tree)
     return
 
 if __name__ == "__main__":
