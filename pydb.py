@@ -841,8 +841,20 @@ def select(columns, table, condition = None):
                 elif condition[col][0]['comp'] == '<':
                     selected = indexes[table][col].search_range(None, condition[col][0]['value'])
             else:
+                col = [k for k in condition][0] if condition else None
                 selected = [[line[x] for x in range(len(line)) if header[x][:header[x].find(" ")] in columns or columns[0] == "*"] for line in lines[1:]]
-                selected = [record for record in selected if condition == None or len([key for key in condition if record[head.index(key)] == str(condition[key])]) == len(condition)]
+                if col == None:
+                    selected = [record for record in selected if condition == None or len([key for key in condition if record[head.index(key)] == str(condition[key][0]['value'])]) == len(condition)]
+                elif condition[col][0]['comp'] == '=':
+                    selected = [record for record in selected if condition == None or len([key for key in condition if record[head.index(key)] == str(condition[key][0]['value'])]) == len(condition)]
+                elif len(condition[col]) == 2:
+                    less = condition[col][0] if condition[col][0]['comp'] == '<' else condition[col][1]
+                    more = condition[col][1] if less == condition[col][0] else condition[col][0]
+                    selected = [record for record in selected if condition == None or len([key for key in condition if int(record[head.index(key)]) < int(less['value']) and int(record[head.index(key)]) > int(more['value'])]) == len(condition)]
+                elif condition[col][0]['comp'] == '>':
+                    selected = [record for record in selected if condition == None or len([key for key in condition if int(record[head.index(key)]) > int(condition[key][0]['value'])]) == len(condition)]
+                elif condition[col][0]['comp'] == '<':
+                    selected = [record for record in selected if condition == None or len([key for key in condition if int(record[head.index(key)]) < int(condition[key][0]['value'])]) == len(condition)]
             joined = [header] + selected
 
             if PRINT_INFO:
