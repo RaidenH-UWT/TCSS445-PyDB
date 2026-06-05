@@ -28,7 +28,7 @@ SQL Support:
     GET TIMER; /* Prints the current value of the most recently started timer, in seconds */
 
     CREATE DATABASE <name> [path="./"]
-    DROP DATABASE [IF EXISTS] <name> [path="./"]
+    DROP DATABASE [IF EXISTS] <name> [path="./"] /* If database is not empty, you will be asked to enter confirmation */
     USE <name> [path="./"]
 
     CREATE TABLE <name> <columns>
@@ -438,7 +438,7 @@ def execute(cmd):
         if PRINT_INFO:
             print("Started timer")
     elif cmd[:9].upper() == "GET TIMER":
-        print(f"{time.time() - current_time} seconds")
+        print(f"Timer at {time.time() - current_time} seconds")
     elif cmd[:5].upper() == "PRINT":
         print(cmd[6:])
     else:
@@ -794,7 +794,6 @@ def select(columns, table, condition = None):
 
             joined = [selections[tables[0]][0]]
             joined[0] += [x for x in selections[tables[1]][0] if x not in joined[0]]
-            # TODO: Implement range queries and queries on indexes
             matching = [[key[key.find('.') + 1:], condition[key][condition[key].find('.') + 1:]] for key in condition]
             data = []
             for a in selections[tables[0]][1:]:
@@ -841,7 +840,6 @@ def select(columns, table, condition = None):
             header = lines[0]
             head = [x[:x.find(" ")] for x in header]
             if condition and table in indexes and all([x in indexes[table] for x in condition]):
-                print("Got an index")
                 col = [k for k in condition][0]
                 if condition[col][0]['comp'] == '=':
                     selected = indexes[table][col].search(condition[col][0]['value'])
@@ -855,16 +853,12 @@ def select(columns, table, condition = None):
                     selected = indexes[table][col].search_range(None, condition[col][0]['value'])
                 selected = [[record[i] for i in range(len(record)) if head[i] in columns or columns[0] == '*'] for record in selected]
             else:
-                print("No index")
                 col = [k for k in condition][0] if condition else None
                 selected = lines[1:]
                 if col == None:
                     selected = [record for record in selected if condition == None or len([key for key in condition if record[head.index(key)] == str(condition[key][0]['value'])]) == len(condition)]
                 elif condition[col][0]['comp'] == '=':
-                    print("Checking equality")
-                    print(condition)
                     selected = [record for record in selected if condition == None or len([key for key in condition if record[head.index(key)] == str(condition[key][0]['value'])]) == len(condition)]
-                    print(len(selected))
                 elif len(condition[col]) == 2:
                     less = condition[col][0] if condition[col][0]['comp'] == '<' else condition[col][1]
                     more = condition[col][1] if less == condition[col][0] else condition[col][0]
@@ -874,6 +868,8 @@ def select(columns, table, condition = None):
                 elif condition[col][0]['comp'] == '<':
                     selected = [record for record in selected if condition == None or len([key for key in condition if int(record[head.index(key)]) < int(condition[key][0]['value'])]) == len(condition)]
                 selected = [[record[i] for i in range(len(record)) if head[i] in columns or columns[0] == '*'] for record in selected]
+            head = [h for h in head if h in columns or columns[0] == '*']
+            header = [h for h in header if any([x in h for x in head])]
             joined = [header] + selected
 
             if PRINT_INFO:

@@ -20,7 +20,7 @@ START TIMER; /* Starts a timer at the current time */
 GET TIMER; /* Prints the current value of the most recently started timer, in seconds */
 
 CREATE DATABASE <name> [path="./"]
-DROP DATABASE [IF EXISTS] <name> [path="./"]
+DROP DATABASE [IF EXISTS] <name> [path="./"] /* If database is not empty, you will be asked to enter confirmation */
 USE <name> [path="./"]
 
 CREATE TABLE <name> <columns>
