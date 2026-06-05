@@ -2,7 +2,7 @@
 """Python-based database management system.
 
 Author: Raiden H
-Updated: 26-05-21
+Updated: 26-06-04
 
 Usage:
     pydb -h
