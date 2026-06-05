@@ -62,7 +62,7 @@ indexes = {}
 current_time = 0
 
 class BPlusTree:
-    """B+ tree implementation for efficient selections
+    """B+ tree implementation for efficient selections. Values should be list records.
 
     Arguments:
     degree -- degree (minimum # child nodes, 1/2 maximum) of the B+ tree
@@ -74,35 +74,6 @@ class BPlusTree:
     
     def __str__(self):
         return f"BPlusTree (degree {self.degree}): \n{self.root}"
-        
-    def example(self):
-        """Set the tree to an example structure for testing
-        """
-        self.degree = 2
-        self.root = self.Node(self.degree, [80], [
-            self.Node(self.degree, [20, 60], [
-                self.Node(self.degree, [10, 15, 18], [10, 15, 18]),
-                self.Node(self.degree, [20, 30, 40, 50], [20, 30, 40, 50]),
-                self.Node(self.degree, [60, 65], [60, 65])
-            ]),
-            self.Node(self.degree, [100, 120, 140], [
-                self.Node(self.degree, [80, 85, 90], [80, 85, 90])
-            ])
-        ])
-        self.root.values[0].values[0].next = self.root.values[0].values[1]
-        self.root.values[0].values[1].next = self.root.values[0].values[2]
-        self.root.values[0].values[2].next = self.root.values[1].values[0]
-        
-        self.root.values[0].values[1].prev = self.root.values[0].values[0]
-        self.root.values[0].values[2].prev = self.root.values[0].values[1]
-        self.root.values[1].values[0].prev = self.root.values[0].values[2]
-        
-        self.root.values[0].parent = self.root
-        self.root.values[0].values[0].parent = self.root.values[0]
-        self.root.values[0].values[1].parent = self.root.values[0]
-        self.root.values[0].values[2].parent = self.root.values[0]
-        self.root.values[1].parent = self.root
-        self.root.values[1].values[0].parent = self.root.values[1] 
         
     def _search(self, value):
         """Internal search implementation. Always returns a node.
@@ -137,7 +108,7 @@ class BPlusTree:
         """Search the tree for a key.
         
         Arguments:
-        key -- Value to search for.
+        key -- Key to search for.
         
         Returns:
         (Node, index) -- If key is found in the tree.
@@ -209,12 +180,12 @@ class BPlusTree:
             target.delete(value)
 
     class Node:
-        """BPlusTree Node inner class.
+        """Single Node of the BPlusTree.
         
         Arguments:
         degree -- Degree of the Node. Must match the BPlusTree the Node is a part of.
-        keys -- Array of keys. Keys may be of any comparable type.
-        values -- Array of values. May either be the same type as the keys, or Nodes themselves.
+        keys -- List of keys. Keys may be of any comparable type.
+        values -- List of values. May either be the same type as the keys, or Nodes themselves.
         parent -- Parent Node of this Node.
         """
         def __init__(self, degree, keys = [], values = [], parent = None):
@@ -229,7 +200,7 @@ class BPlusTree:
             return f'  Node (leaf: {self.is_leaf()})  Keys: {self.keys}  Values: [{'\n' + '\n'.join([str(val) for val in self.values]) if isinstance(self.values[0] if len(self.values) > 0 else "[]", BPlusTree.Node) else ' '.join([str(val) for val in self.values])}]'
         
         def is_leaf(self):
-            """Returns true if this Node is a leaf, false otherwise.
+            """Returns True if this Node is a leaf, False otherwise.
             """
             return len(self.values) == 0 or not isinstance(self.values[0], BPlusTree.Node)
         
@@ -313,7 +284,8 @@ class BPlusTree:
                 self.next.parent.delete(self.next)
 
 def main():
-    """Handle input and pass it off to helper functions."""
+    """Handle input and pass it off to helper functions.
+    """
     global PRINT_INFO
     PRINT_INFO = "-q" not in sys.argv
     raw = ""
@@ -347,6 +319,8 @@ def main():
         execute(cmd)
 
 def _interactive():
+    """Runs the program in interactive mode, rather than from argument or file SQL.
+    """
     print("""\
     Now running in interactive mode, enter a single statement at a time
     Interrupt or type 'exit' to exit
@@ -1092,28 +1066,6 @@ def print_table(rows):
 
 def test():
     """Testing"""
-    tree = BPlusTree(2)
-    tree.insert(1)
-    tree.insert(2)
-    tree.insert(3)
-    tree.insert(4)
-    # print(tree)
-    tree.insert(5)
-    print(tree)
-    tree.insert(6)
-    print(tree)
-    tree.insert(7)
-    print(tree)
-    tree.insert(8)
-    print(tree)
-    tree.insert(9)
-    print(tree)
-    tree.insert(2)
-    print(tree)
-    tree.insert(2)
-    print(tree)
-    tree.insert(2)
-    print(tree)
     return
 
 if __name__ == "__main__":
