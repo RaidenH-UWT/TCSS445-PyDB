@@ -24,22 +24,26 @@ SQL Support:
         comments
     */
     PRINT <text> /* Inline comments */
+    START TIMER;
+    GET TIMER;
 
     CREATE DATABASE <name> [path="./"]
     DROP DATABASE <name> [path="./"]
-    USE DATABASE <name> [path="./"]
+    USE <name> [path="./"]
 
     CREATE TABLE <name> <columns>
     DROP TABLE <name>
     ALTER TABLE <name> <operation> ...
                     ADD <columns>
                     DROP COLUMN <column>
+    CREATE INDEX <name> ON <table>(<column>)
 
     SELECT <columns> FROM <table> WHERE <condition>
                         <tables> WHERE <condition>
                         <table> INNER JOIN <table> ON <condition>
                         <table> LEFT OUTER JOIN <table> ON <condition>
 
+    LOAD DATA INFILE <csv> INTO TABLE <table>
     INSERT INTO <table> [columns] VALUES <values>
     UPDATE <table> SET <columns=values> [WHERE <condition>]
     DELETE FROM <table> [WHERE <condition>]
@@ -49,10 +53,12 @@ import csv
 import os
 import re
 import sys
+import time
 
 PRINT_INFO = True
 current_database = ""
 indexes = {}
+current_time = 0
 
 class BPlusTree:
     """B+ tree implementation for efficient selections
@@ -108,14 +114,20 @@ class BPlusTree:
         """
         leaf = self.root
         while not leaf.is_leaf():
-            n = len(leaf.keys) + 1
-            for i in range(n):
-                temp = leaf.values[i]
-                if i == len(leaf.keys):
+            if value == None:
+                if leaf.values[0] and type(leaf.values[0]) == BPlusTree.Node:
+                    temp = leaf.values[0]
+                else:
+                    break
+            else:
+                n = len(leaf.keys) + 1
+                for i in range(n):
                     temp = leaf.values[i]
-                    break
-                if leaf.keys[i] > value:
-                    break
+                    if i == len(leaf.keys):
+                        temp = leaf.values[i]
+                        break
+                    if leaf.keys[i] > value:
+                        break
                 
             leaf = temp
         return leaf
@@ -363,6 +375,8 @@ def execute(cmd):
     Raises:
     SyntaxError if the statement cannot be parsed.
     """
+    global PRINT_INFO
+    global current_time
     cmd = cmd.strip()
     if cmd.endswith(";"):
         cmd = cmd[:-1]
@@ -408,9 +422,9 @@ def execute(cmd):
             cond = re.split(" and ", cond, flags=re.IGNORECASE)
             for c in cond:
                 if c[:c.find(" ")] in structCond:
-                    structCond[c[:c.find(" ")]].append({"comp": c[c.find(" ") + 1:c.find(" ", c.find(" ") + 1)], "value": c[c.rfind(" ") + 1:]})
+                    structCond[c[:c.find(" ")]].append({"comp": c[c.find(" ") + 1:c.find(" ", c.find(" ") + 1)], "value": c[c.rfind(" ") + 1:].replace("'", "").replace('"', '')})
                 else:
-                    structCond[c[:c.find(" ")]] = [{"comp": c[c.find(" ") + 1:c.find(" ", c.find(" ") + 1)], "value": c[c.rfind(" ") + 1:]}]
+                    structCond[c[:c.find(" ")]] = [{"comp": c[c.find(" ") + 1:c.find(" ", c.find(" ") + 1)], "value": c[c.rfind(" ") + 1:].replace("'", "").replace('"', '')}]
         print_table(select(cols, table, structCond))
     elif cmd[:11].upper() == "INSERT INTO":
         if cmd[cmd.find("VALUES") + 6] != " ":
@@ -440,6 +454,12 @@ def execute(cmd):
         if not cond == None:
             cond = {cond[:cond.find('=')].strip(): re.sub(r'[\'"]', '', cond[cond.find('=') + 1:]).strip()}
         delete(table, cond)
+    elif cmd[:11].upper() == "START TIMER":
+        current_time = time.time()
+        if PRINT_INFO:
+            print("Started timer")
+    elif cmd[:9].upper() == "GET TIMER":
+        print(f"{time.time() - current_time} seconds")
     elif cmd[:5].upper() == "PRINT":
         print(cmd[6:])
     else:
@@ -829,6 +849,7 @@ def select(columns, table, condition = None):
             header = lines[0]
             head = [x[:x.find(" ")] for x in header]
             if condition and table in indexes and all([x in indexes[table] for x in condition]):
+                print("Got an index")
                 col = [k for k in condition][0]
                 if condition[col][0]['comp'] == '=':
                     selected = indexes[table][col].search(condition[col][0]['value'])
@@ -840,13 +861,18 @@ def select(columns, table, condition = None):
                     selected = indexes[table][col].search_range(condition[col][0]['value'])
                 elif condition[col][0]['comp'] == '<':
                     selected = indexes[table][col].search_range(None, condition[col][0]['value'])
+                selected = [[record[i] for i in range(len(record)) if head[i] in columns or columns[0] == '*'] for record in selected]
             else:
+                print("No index")
                 col = [k for k in condition][0] if condition else None
-                selected = [[line[x] for x in range(len(line)) if header[x][:header[x].find(" ")] in columns or columns[0] == "*"] for line in lines[1:]]
+                selected = lines[1:]
                 if col == None:
                     selected = [record for record in selected if condition == None or len([key for key in condition if record[head.index(key)] == str(condition[key][0]['value'])]) == len(condition)]
                 elif condition[col][0]['comp'] == '=':
+                    print("Checking equality")
+                    print(condition)
                     selected = [record for record in selected if condition == None or len([key for key in condition if record[head.index(key)] == str(condition[key][0]['value'])]) == len(condition)]
+                    print(len(selected))
                 elif len(condition[col]) == 2:
                     less = condition[col][0] if condition[col][0]['comp'] == '<' else condition[col][1]
                     more = condition[col][1] if less == condition[col][0] else condition[col][0]
@@ -855,6 +881,7 @@ def select(columns, table, condition = None):
                     selected = [record for record in selected if condition == None or len([key for key in condition if int(record[head.index(key)]) > int(condition[key][0]['value'])]) == len(condition)]
                 elif condition[col][0]['comp'] == '<':
                     selected = [record for record in selected if condition == None or len([key for key in condition if int(record[head.index(key)]) < int(condition[key][0]['value'])]) == len(condition)]
+                selected = [[record[i] for i in range(len(record)) if head[i] in columns or columns[0] == '*'] for record in selected]
             joined = [header] + selected
 
             if PRINT_INFO:

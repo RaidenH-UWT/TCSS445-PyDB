@@ -3,6 +3,9 @@
 -- ============================================================
 
 -- 0. Setup: create the employees table
+CREATE DATABASE TCSS445_Project;
+USE TCSS445_Project;
+
 CREATE TABLE employees (
     id INT,
     name VARCHAR(100),
@@ -16,7 +19,9 @@ LOAD DATA INFILE 'data.csv' INTO TABLE employees;
 -- ============================================================
 -- Test 1: Full table scan before any index (baseline)
 -- ============================================================
+START TIMER;
 SELECT * FROM employees WHERE salary = 75000;
+GET TIMER;
 -- Expected: returns rows with salary exactly 75000
 
 SELECT id, name FROM employees WHERE salary > 50000 AND salary < 80000;
@@ -31,7 +36,9 @@ CREATE INDEX idx_salary ON employees (salary);
 -- ============================================================
 -- Test 3: Equality search using index
 -- ============================================================
+START TIMER;
 SELECT * FROM employees WHERE salary = 75000;
+GET TIMER;
 -- Expected: rows with salary 75000 (must use index, not full scan)
 SELECT * FROM employees WHERE salary = 300000;
 -- Expected: empty set (value does not exist)
@@ -60,6 +67,9 @@ SELECT * FROM empty_table WHERE x = 1;
 SELECT * FROM employees WHERE department = 'HR';
 -- Expected: correct rows, system must not crash, should fall back to full scan
 
+DROP TABLE empty_table;
+DROP TABLE employees;
+DROP DATABASE TCSS445_Project;
 -- ============================================================
 -- End of test
 -- ============================================================
