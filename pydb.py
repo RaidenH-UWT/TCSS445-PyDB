@@ -24,8 +24,8 @@ SQL Support:
         comments
     */
     PRINT <text> /* Inline comments */
-    START TIMER;
-    GET TIMER;
+    START TIMER; /* Starts a timer at the current time */
+    GET TIMER; /* Prints the current value of the most recently started timer, in seconds */
 
     CREATE DATABASE <name> [path="./"]
     DROP DATABASE [IF EXISTS] <name> [path="./"]
