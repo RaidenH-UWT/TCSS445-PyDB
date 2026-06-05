@@ -3,6 +3,7 @@
 -- ============================================================
 
 -- 0. Setup: create the employees table
+DROP DATABASE IF EXISTS TCSS445_Project;
 CREATE DATABASE TCSS445_Project;
 USE TCSS445_Project;
 
@@ -67,9 +68,6 @@ SELECT * FROM empty_table WHERE x = 1;
 SELECT * FROM employees WHERE department = 'HR';
 -- Expected: correct rows, system must not crash, should fall back to full scan
 
-DROP TABLE empty_table;
-DROP TABLE employees;
-DROP DATABASE TCSS445_Project;
 -- ============================================================
 -- End of test
 -- ============================================================

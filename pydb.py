@@ -28,7 +28,7 @@ SQL Support:
     GET TIMER;
 
     CREATE DATABASE <name> [path="./"]
-    DROP DATABASE <name> [path="./"]
+    DROP DATABASE [IF EXISTS] <name> [path="./"]
     USE <name> [path="./"]
 
     CREATE TABLE <name> <columns>
@@ -52,6 +52,7 @@ SQL Support:
 import csv
 import os
 import re
+import shutil
 import sys
 import time
 
@@ -388,7 +389,11 @@ def execute(cmd):
         create_database(cmd[16:cmd.find(" ", 17) if cmd.find(" ", 17) > -1 else None],
                      cmd[cmd.find(" ", 17):-1] if cmd.find(" ", 17) > -1 else ".")
     elif cmd[:13].upper() == "DROP DATABASE":
-        drop_database(cmd[14:cmd.find(" ", 15) if cmd.find(" ", 15) > -1 else None],
+        if "IF EXISTS" in cmd:
+            drop_database(cmd[24:cmd.find(" ", 25) if cmd.find(" ", 25) > -1 else None],
+                     cmd[cmd.find(" ", 25):-1] if cmd.find(" ", 25) > -1 else ".", True)
+        else:
+            drop_database(cmd[14:cmd.find(" ", 15) if cmd.find(" ", 15) > -1 else None],
                      cmd[cmd.find(" ", 15):-1] if cmd.find(" ", 15) > -1 else ".")
     elif cmd[:3].upper() == "USE":
         # actually simple, just checks if the optional parameter path exists and passes it if so
@@ -485,12 +490,13 @@ def create_database(name, path = "."):
         # raise FileExistsError(f"Database {full_path} already exists.")
         print(f"ERROR: Database {full_path} already exists.")
 
-def drop_database(name, path = "."):
+def drop_database(name, path = ".", check = False):
     """Delete databases.
 
     Arguments:
     name -- Name of the database to delete
     path -- Filepath to a directory where the database is (default is the current directory)
+    check -- Check if the database exists first
 
     Raises:
     FileNotFoundError if the given name and path do not lead to a database.
@@ -501,8 +507,20 @@ def drop_database(name, path = "."):
         if PRINT_INFO:
             print(f"Deleted database {name} at {os.path.join(path, name)}")
     except FileNotFoundError:
-        # raise FileNotFoundError(f"Directory {full_path} does not exist.")
-        print(f"ERROR: Directory {full_path} does not exist.")
+        if not check:
+            # raise FileNotFoundError(f"Directory {full_path} does not exist.")
+            print(f"ERROR: Directory {full_path} does not exist.")
+    except OSError:
+        print(f"WARNING: Database {name} is not empty. Drop anyways? (y/n):")
+        res = input()
+        if res[0] == 'y':
+            shutil.rmtree(full_path)
+            print(f"Deleted database {name} at {os.path.join(path, name)}")
+            return
+        else:
+            return
+        # raise OSError(f"Database {name} is not empty. Drop the tables first.")
+        print(f"ERROR: Database {name} is not empty. Drop the tables first.")
 
 def use_database(name, path = "."):
     """Select databases.
